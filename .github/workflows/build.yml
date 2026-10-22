@@ -37,7 +37,7 @@ jobs:
           cache: npm
       - name: 安装 Linux 图形运行库
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libatk-bridge2.0-0 fonts-noto-cjk
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libatk-bridge2.0-0 fonts-noto-cjk xz-utils binutils
       - run: git --version
       - run: npm ci --no-audit --no-fund
       - run: npm test

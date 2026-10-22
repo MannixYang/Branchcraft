@@ -64,8 +64,11 @@ node test/desktop-smoke.cjs
 - `index.html` / `styles.css`：桌面布局与样式。
 - `test/git-service.test.js`：后端集成测试。
 - `test/desktop-smoke.cjs`：真实桌面烟雾测试。
+- `test/packaged-smoke.cjs`：按本机系统与架构定位打包目录，复用界面回归。
+- `platform.js`：Git 可执行文件配置及 GUI 启动环境适配。
+- `.github/workflows/build.yml`：四组原生系统/架构的构建与验证配置。
 
-package.json 的许可证元数据标注为 MIT，但当前未附完整 LICENSE 文本；公开发布前请确认授权并补齐许可证文件、品牌图标与代码签名。Linux 包中的维护者邮箱为 example.invalid 占位值，正式发布前请替换为有效维护信息。
+package.json 的许可证元数据标注为 MIT，但当前未附完整 LICENSE 文本；公开发布前请确认授权并补齐许可证文件、品牌图标与代码签名。主页 https://branchcraft.example.invalid 及 Linux 包中的维护者邮箱为 example.invalid 占位值，正式发布前请替换为有效维护信息。
 
 ## 三平台构建与运行
 
@@ -89,6 +92,19 @@ Linux AppImage 可能需要 `chmod +x 文件.AppImage` 和 FUSE（Ubuntu 22.04 �
 
 ### Docker 中的 Linux 验证
 
-在 Docker Linux 引擎执行 `docker build -f Dockerfile.validation -t branchcraft-validation .`，然后执行 `docker run --name branchcraft-validation branchcraft-validation`。容器自动运行 14 项测试、Xvfb Electron 桌面烟雾测试并生成 Linux AppImage/deb。可用 `docker cp branchcraft-validation:/app/release ./linux-release` 提取产物，再自行删除测试容器。
+在 Docker Linux 引擎执行 `docker build -f Dockerfile.validation -t branchcraft-validation .`，然后执行 `docker run --name branchcraft-validation branchcraft-validation`。容器自动运行 14 项测试、Xvfb Electron 桌面烟雾测试并生成 Linux AppImage/deb，随后启动 linux-unpacked 中的程序进行界面回归。镜像显式安装 xz-utils 和 binutils，分别提供 deb 打包所需的 xz 与 ar。可用 `docker cp branchcraft-validation:/app/release ./linux-release` 提取产物，再自行删除测试容器。
 
 容器专用测试开关 `BRANCHCRAFT_TEST_NO_SANDBOX=1` 仅给测试启动器传递 `--no-sandbox`，用于 Docker 缺少用户命名空间权限的场景，不改变正式应用默认 sandbox 设置。容器结果不代表真实 Linux 桌面环境、Wayland、FUSE 启动、外部网络认证或 macOS 通过测试。普通 Linux 容器不能运行 macOS Cocoa 应用。
+
+## Git 基线与开发分支
+
+`main` 的首个提交 `e6ab251` 来自之前交付的 Windows 初版源码归档，标签为 `baseline/windows-v1.0.0`。跨平台改动从独立分支 `feature/cross-platform` 的 `1e06ce4` 开始保存；后续修复继续提交到该分支，不覆盖初版。源码 ZIP 不包含 .git；已有开发仓库保留完整历史。
+
+本地未配置 Git 远程地址，未执行 GitHub Actions，也未生成或验证 macOS 安装包。可将仓库推送到有权限的 GitHub 仓库后，在 Actions 中手动运行“三平台测试与打包”；下载各架构 Artifacts，并核对每项任务与测试截图。
+
+## 本轮本机验证（2026-10-22）
+
+- Windows x64：14/14 自动化测试通过；NSIS 与 portable 重新生成；win-unpacked 真实界面回归通过。未实际安装 NSIS；portable 的独立自动化启动此前超时，不能视为通过。构建日志中出现 signing 字样不代表可信签名，当前未配置签名证书。
+- Docker Linux x64：14/14 自动化测试、源码界面、linux-unpacked 界面通过；AppImage 解压后的程序界面通过（不是 FUSE 挂载启动）；deb 生成、容器内安装及已安装程序界面通过。
+- 界面回归覆盖启动、选择仓库、Diff、暂存、提交、历史和 Stash 详情，无页面异常。目录选择器由测试替换，测试使用独立临时仓库。
+- 未实测真实 Linux 桌面、Wayland、AppImage FUSE 启动、macOS、远端认证与推送。Actions 配置未在云端运行。正式发布前需要独立验证、品牌图标、有效主页与维护者元数据、许可证确认及签名/公证。

@@ -1,6 +1,6 @@
 FROM node:24-bookworm-slim
 # slim 镜像未预装系统 CA；使用 Node 内置可信根启动 HTTPS，始终验证证书。
-RUN node -e "require('fs').writeFileSync('/tmp/node-ca.pem',require('tls').rootCertificates.join('\n'))" && sed -i 's|http://deb.debian.org|https://mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources && apt-get -o Acquire::https::CaInfo=/tmp/node-ca.pem -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update && apt-get -o Acquire::https::CaInfo=/tmp/node-ca.pem -o Acquire::Retries=2 install -y --no-install-recommends git xvfb xauth libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libatk-bridge2.0-0 fonts-noto-cjk ca-certificates rpm && rm -rf /var/lib/apt/lists/*
+RUN node -e "require('fs').writeFileSync('/tmp/node-ca.pem',require('tls').rootCertificates.join('\n'))" && sed -i 's|http://deb.debian.org|https://mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources && apt-get -o Acquire::https::CaInfo=/tmp/node-ca.pem -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update && apt-get -o Acquire::https::CaInfo=/tmp/node-ca.pem -o Acquire::Retries=2 install -y --no-install-recommends git xvfb xauth libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libatk-bridge2.0-0 fonts-noto-cjk ca-certificates rpm xz-utils binutils && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund && npm install --no-save --package-lock=false playwright-core
