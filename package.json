@@ -1,19 +1,21 @@
 {
   "name": "branchcraft",
   "version": "1.0.0",
-  "description": "\u672c\u5730 Git \u53ef\u89c6\u5316\u684c\u9762\u5de5\u4f5c\u53f0",
+  "description": "本地 Git 可视化桌面工作台",
   "main": "main.js",
   "author": "Branchcraft",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/git-service.test.js test/platform.test.js test/file-tree.test.js test/project-service.test.js",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder --publish never",
+    "test": "node --test test/git-service.test.js test/platform.test.js test/file-tree.test.js test/project-service.test.js test/terminal-service.test.js",
+    "pack": "node scripts/build.cjs --dir",
+    "dist": "node scripts/build.cjs --publish never",
     "test:desktop": "node test/desktop-smoke.cjs",
-    "dist:win": "electron-builder --win --x64 --publish never",
-    "dist:linux": "electron-builder --linux --x64 --publish never",
-    "dist:mac": "electron-builder --mac --publish never"
+    "dist:win": "node scripts/build.cjs --win --x64 --publish never",
+    "dist:linux": "node scripts/build.cjs --linux --x64 --publish never",
+    "dist:mac": "node scripts/build.cjs --mac --publish never",
+    "postinstall": "node scripts/install-native.cjs",
+    "test:terminal": "node test/terminal-smoke.cjs"
   },
   "devDependencies": {
     "electron": "^42.0.0",
@@ -36,7 +38,9 @@
       "platform.js",
       "file-tree.js",
       "project-service.js",
-      "project-ui.js"
+      "project-ui.js",
+      "terminal-service.js",
+      "terminal-ui.js"
     ],
     "win": {
       "target": [
@@ -101,7 +105,15 @@
       ],
       "category": "public.app-category.developer-tools",
       "identity": null
-    }
+    },
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ]
   },
-  "homepage": "https://branchcraft.example.invalid"
+  "homepage": "https://branchcraft.example.invalid",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0"
+  }
 }

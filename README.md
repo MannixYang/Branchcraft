@@ -108,3 +108,29 @@ Linux AppImage 可能需要 `chmod +x 文件.AppImage` 和 FUSE（Ubuntu 22.04 �
 - Docker Linux x64：14/14 自动化测试、源码界面、linux-unpacked 界面通过；AppImage 解压后的程序界面通过（不是 FUSE 挂载启动）；deb 生成、容器内安装及已安装程序界面通过。
 - 界面回归覆盖启动、选择仓库、Diff、暂存、提交、历史和 Stash 详情，无页面异常。目录选择器由测试替换，测试使用独立临时仓库。
 - 未实测真实 Linux 桌面、Wayland、AppImage FUSE 启动、macOS、远端认证与推送。Actions 配置未在云端运行。正式发布前需要独立验证、品牌图标、有效主页与维护者元数据、许可证确认及签名/公证。
+
+
+## 增强工作流（feature/cross-platform）
+
+工作区按文件夹折叠分组。未暂存文本修改可按文件或代码块回退；操作前确认，内容变化后拒绝使用旧预览，且不修改暂存区。工作区、历史与 Stash 点选条目保持列表滚动位置。
+
+“项目文件”用于浏览 Git 已跟踪文件及未忽略的未跟踪文件。左侧编辑文本，右侧与 HEAD 或暂存区对比；Diff 可隐藏。Ctrl+S 保存到工作区，不自动暂存。切换文件或仓库前会提示未保存修改；检测到外部修改时拒绝覆盖。仅支持 2MB 内 UTF-8 文本，不跟随符号链接。
+
+右上角“终端”展开**右侧**持续 PTY 面板：Windows 使用 PowerShell，Linux/macOS 使用登录 Shell。命令、环境变量、当前目录及交互进程在同一会话内保持；支持键盘输入、Ctrl+C 与尺寸调整。隐藏面板不结束 Shell，重新展开继续原会话；切换仓库、页面重载或关闭窗口会清理旧会话。Shell 退出后可重新打开。终端能执行真实系统命令，请像使用系统终端一样谨慎；它不是命令沙箱，也不会逐条确认危险命令。
+
+### 原生依赖与构建
+
+`npm ci` 的 postinstall 检查 node-pty 是否提供完整目标 N-API 预构建；存在时直接使用，否则运行 electron-builder 的原生依赖安装流程。`npm run pack` / `dist` 系列通过 `scripts/build.cjs` 保留生产依赖收集，仅对具有完整预构建的全部目标跳过强制重编译。Linux 仍走正常原生编译流程，可能需要 Python、make 和 C/C++ 编译器；不要为所有平台统一关闭原生编译。node-pty 的原生文件通过 asarUnpack 放在包外。
+
+终端真实桌面回归（需额外开发工具 playwright-core，不是应用运行依赖）：
+
+```powershell
+npm.cmd install --no-save --package-lock=false playwright-core
+npm.cmd run test:terminal
+# 验证当前新生成的 Windows 目录包，而不是开发入口
+$env:BRANCHCRAFT_EXE = "$PWD\release\win-unpacked\Branchcraft.exe"
+npm.cmd run test:terminal
+Remove-Item Env:BRANCHCRAFT_EXE
+```
+
+本轮在 Windows x64 验证开发版和新目录包的真实 PTY：多命令状态、隐藏后输出与会话保留、右侧布局、尺寸变化、键盘输入、Ctrl+C、退出重开、仓库隔离及 Shell 清理。Linux/macOS 的本轮终端未实机验证；早期平台包不包含这些新功能，不能代替本轮验证。目录包验证也不等于 NSIS 安装器或便携启动器已重新验证。

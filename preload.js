@@ -1,3 +1,5 @@
 const {contextBridge,ipcRenderer}=require('electron');
 const invoke=async(name,...args)=>{const result=await ipcRenderer.invoke(name,...args);if(!result.ok)throw Error(result.error);return result.data;};
-contextBridge.exposeInMainWorld('gitdesk',Object.fromEntries(['projectTree','projectRead','projectSave','projectDiff','rollbackPreview','rollback','recent','choose','open','snapshot','diff','action','conflict','resolve','stashHash','reveal'].map(name=>[name,(...args)=>invoke(name,...args)])));
+contextBridge.exposeInMainWorld('gitdesk',{...Object.fromEntries(['terminalOpen','terminalWrite','terminalResize','terminalClose','projectTree','projectRead','projectSave','projectDiff','rollbackPreview','rollback','recent','choose','open','snapshot','diff','action','conflict','resolve','stashHash','reveal'].map(name=>[name,(...args)=>invoke(name,...args)])),onTerminalData:callback=>subscribe('terminalData',callback),onTerminalExit:callback=>subscribe('terminalExit',callback)});
+
+function subscribe(channel,callback){if(typeof callback!=='function')throw Error('无效监听器');const listener=(_event,data)=>callback(data);ipcRenderer.on(channel,listener);return ()=>ipcRenderer.removeListener(channel,listener);}
