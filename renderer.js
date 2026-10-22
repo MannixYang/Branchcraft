@@ -46,9 +46,9 @@ async function selectFile(file,kind,key){
  const rows=[...pre.querySelectorAll('.diff-line')];let index=-1;
  for(const row of rows){const gutter=el('span','hunk-actions');row.prepend(gutter);if(!row.classList.contains('hunk'))continue;const hunk=++index;
  if(preview?.hunks?.some(h=>h.index===hunk)){
- const b=button(staged?'取消暂存':'暂存',()=>finish(()=>api.action(staged?'unstageHunk':'stageHunk',{file:file.path,token:preview.hunkToken,hunk}),staged?'已取消暂存此块，工作区保持不变':'已暂存此块，工作区保持不变'),'hunk-action');b.dataset.hunk=String(hunk);b.dataset.action=staged?'unstage':'stage';gutter.append(b);
+ const b=button(staged?'−':'＋',()=>finish(()=>api.action(staged?'unstageHunk':'stageHunk',{file:file.path,token:preview.hunkToken,hunk}),staged?'已取消暂存此块，工作区保持不变':'已暂存此块，工作区保持不变'),'hunk-action');b.dataset.hunk=String(hunk);b.dataset.action=staged?'unstage':'stage';b.title=staged?'取消暂存此代码块（保留工作区修改）':'暂存此代码块';b.setAttribute('aria-label',b.title);gutter.append(b);
  }
- if(rollback&&rollback.diff===text&&rollback.hunks[hunk]){const b=button('恢复…',()=>restore(hunk),'hunk-action danger');b.dataset.hunk=String(hunk);b.dataset.action='restore';gutter.append(b);}
+ if(rollback&&rollback.diff===text&&rollback.hunks[hunk]){const b=button('↶',()=>restore(hunk),'hunk-action danger');b.dataset.hunk=String(hunk);b.dataset.action='restore';b.title='恢复此代码块的未暂存修改…';b.setAttribute('aria-label',b.title);gutter.append(b);}
  }
  if(reason)$('detailBody').prepend(el('div','detail-note','代码块操作不可用：'+reason+'。可使用上方整文件操作。'));
 }
