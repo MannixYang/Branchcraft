@@ -44,7 +44,7 @@ npm.cmd run pack
 npm.cmd run dist
 ```
 
-`npm test` 在系统临时目录创建独立仓库，覆盖 12 项 Git 集成测试及平台环境测试：首次提交与中文路径、暂存区 Diff、目录删除、重命名、分支、合并冲突、取消合并、Stash 完整流程、过期引用与 pop 冲突、本地远程同步、路径与并发防护、二进制与大文件。
+`npm test` 在系统临时目录创建独立仓库，覆盖 Git 集成、平台环境、文件树、项目编辑、PTY、本地恢复与仓库监听测试：首次提交与中文路径、暂存区 Diff、目录删除、重命名、分支、合并冲突、取消合并、Stash 完整流程、过期引用与 pop 冲突、本地远程同步、路径与并发防护、二进制与大文件。
 
 桌面烟雾测试（可选开发工具）：
 
@@ -102,7 +102,7 @@ Linux AppImage 可能需要 `chmod +x 文件.AppImage` 和 FUSE（Ubuntu 22.04 �
 
 本地未配置 Git 远程地址，未执行 GitHub Actions，也未生成或验证 macOS 安装包。可将仓库推送到有权限的 GitHub 仓库后，在 Actions 中手动运行“三平台测试与打包”；下载各架构 Artifacts，并核对每项任务与测试截图。
 
-## 本轮本机验证（2026-10-22）
+## 早期跨平台基线验证（不代表本轮新增功能验收）
 
 - Windows x64：14/14 自动化测试通过；NSIS 与 portable 重新生成；win-unpacked 真实界面回归通过。未实际安装 NSIS；portable 的独立自动化启动此前超时，不能视为通过。构建日志中出现 signing 字样不代表可信签名，当前未配置签名证书。
 - Docker Linux x64：14/14 自动化测试、源码界面、linux-unpacked 界面通过；AppImage 解压后的程序界面通过（不是 FUSE 挂载启动）；deb 生成、容器内安装及已安装程序界面通过。
@@ -134,3 +134,28 @@ Remove-Item Env:BRANCHCRAFT_EXE
 ```
 
 本轮在 Windows x64 验证开发版和新目录包的真实 PTY：多命令状态、隐藏后输出与会话保留、右侧布局、尺寸变化、键盘输入、Ctrl+C、退出重开、仓库隔离及 Shell 清理。Linux/macOS 的本轮终端未实机验证；早期平台包不包含这些新功能，不能代替本轮验证。目录包验证也不等于 NSIS 安装器或便携启动器已重新验证。
+
+
+## 外部刷新、提交审阅与本地恢复（本轮更新）
+
+- 外部编辑器、终端或其他 Git 客户端产生变化后自动刷新；返回窗口、F5 和刷新按钮共用刷新入口。工作区保留当前选择、搜索、文件夹折叠与滚动位置；同一文件的 Git 状态字符不变时仍重新读取 Diff。打开确认、审阅或恢复对话框时延后刷新，不覆盖正在编辑的文本。
+- 导航统一为项目文件、工作区、提交历史与 Stash 储藏室。工作区按冲突、已暂存、未暂存分组，各组支持嵌套文件夹。
+- 提交先显示集中审阅，列出将提交的文件、文本增删统计、Diff 和未暂存内容提示。说明草稿按仓库保存在本机；Git / hook 失败显示原始输出并保留草稿，成功提交后清除。审阅后暂存内容变化须重新审阅。
+- 恢复未暂存文件或代码块前，自动备份该文件的完整原始字节；恢复历史备份前也会备份当前状态。恢复仅影响工作区，不改暂存区。备份失败时拒绝破坏性操作。
+- 通过“本地恢复记录”查看、预览、恢复或手动清空当前仓库记录。文件不存在的备份恢复后会删除当前对应工作区文件；预览最多显示512KiB，恢复使用完整字节。
+- 所有仓库共享 **100MiB（104857600字节，含 JSON/Base64 开销）** 上限，记录保留7天。在读取、写入记录时清理过期记录，容量不足时从最旧记录开始清理，不是独立定时备份服务；编码后单条备份超过容量上限时拒绝操作。备份不承诺永久存在。
+- 记录存储于 Electron `app.getPath('userData')` 下的 `recovery` 目录（具体位置以实际 userData 路径为准；自定义 `--user-data-dir` 时随之变化），不写入 Git 仓库。记录未加密，可能包含敏感源码，请保护系统账户与用户目录权限；清空记录不等同于磁盘安全擦除。此安全网不替代 Git 提交或独立备份，不覆盖所有 Git 操作（如 Stash 删除、合并中止）。
+
+补充回归命令（需本机 Electron 与 playwright-core）：
+
+```powershell
+node test/workflow-smoke.cjs
+node test/editor-smoke.cjs
+node test/project-tree-smoke.cjs
+node test/workspace-hunks-smoke.cjs
+node test/scroll-smoke.cjs
+node test/terminal-smoke.cjs
+node test/packaged-smoke.cjs
+```
+
+本轮仅在 Windows x64 实机验证；Linux/macOS 构建配置仍保留，但不代表已完成本轮实机验收。`npm run pack` 更新 `release/win-unpacked` 目录包；旧 portable.exe 不会被该命令更新。

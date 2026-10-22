@@ -5,9 +5,10 @@ const path=require('node:path');
 const os=require('node:os');
 const {createHash}=require('node:crypto');
 const {gitEnvironment,gitExecutable}=require('./platform');
+const {RecoveryStore,regularPath,state:recoveryState}=require('./recovery-store');
 class GitService {
- constructor(repo){this.repo=repo;this.busy=false;}
- async git(args,allowFailure=false){return new Promise((resolve,reject)=>execFile(gitExecutable(),['-c','core.quotepath=false','-c','color.ui=false',...args],{cwd:this.repo,encoding:'utf8',maxBuffer:24*1024*1024,timeout:120000,windowsHide:true,env:{...gitEnvironment(),GIT_TERMINAL_PROMPT:'0',GIT_MERGE_AUTOEDIT:'no'}},(err,stdout,stderr)=>{if(err&&!allowFailure)reject(new Error(err.code==='ENOENT'?'未找到 Git。请安装系统 Git，或设置 BRANCHCRAFT_GIT 为绝对路径。':(stderr||stdout||err.message).trim()));else resolve(stdout);}));}
+ constructor(repo,options={}){this.repo=repo;this.busy=false;this.recovery=options.recoveryDir?new RecoveryStore(repo,options.recoveryDir):null;}
+ async git(args,allowFailure=false){return new Promise((resolve,reject)=>execFile(gitExecutable(),['-c','core.quotepath=false','-c','color.ui=false',...args],{cwd:this.repo,encoding:'utf8',maxBuffer:24*1024*1024,timeout:120000,windowsHide:true,env:{...gitEnvironment(),GIT_TERMINAL_PROMPT:'0',GIT_MERGE_AUTOEDIT:'no',GIT_OPTIONAL_LOCKS:'0'}},(err,stdout,stderr)=>{if(err&&!allowFailure)reject(new Error(err.code==='ENOENT'?'未找到 Git。请安装系统 Git，或设置 BRANCHCRAFT_GIT 为绝对路径。':(stderr||stdout||err.message).trim()));else resolve(stdout);}));}
  async filePath(name){if(typeof name!=='string'||!name||name.includes('\0'))throw Error('无效文件路径');const target=path.resolve(this.repo,name);const rel=path.relative(this.repo,target);if((rel==='..'||rel.startsWith('..'+path.sep))||path.isAbsolute(rel)||rel.split(/[\\/]/).some(x=>x.toLowerCase()==='.git'))throw Error('不允许访问仓库外部或 Git 内部文件');const root=await fs.realpath(this.repo);let ancestor=target;let actual;for(;;){try{actual=await fs.realpath(ancestor);break;}catch(e){if(!['ENOENT','ENOTDIR'].includes(e.code))throw e;const parent=path.dirname(ancestor);if(parent===ancestor)throw e;ancestor=parent;}}const relative=path.relative(root,actual);if((relative==='..'||relative.startsWith('..'+path.sep))||path.isAbsolute(relative))throw Error('禁止通过链接访问仓库外部文件');return target;}
  async snapshot(){
  const raw=await this.git(['status','--porcelain=v1','-z','--untracked-files=all']);const parts=raw.split('\0');const files=[];
@@ -16,6 +17,18 @@ class GitService {
  this.git(['symbolic-ref','--short','HEAD'],true),this.git(['for-each-ref','--format=%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(refname)','refs/heads','refs/remotes']),this.git(['log','--all','--date-order','-180','--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s%x1f%D%x1e'],true),this.git(['stash','list','--format=%gd%x1f%gs%x1f%ci']),this.git(['remote','-v']),this.git(['rev-list','--left-right','--count','HEAD...@{upstream}'],true),this.git(['rev-parse','--absolute-git-dir'])]);
  const gd=gitDir.trim();const merging=await fs.access(path.join(gd,'MERGE_HEAD')).then(()=>true,()=>false);
  return {repo:this.repo,branch:branch.trim()||'(分离 HEAD / 未提交)',files,branches:branches.trim().split('\n').filter(Boolean).map(l=>{const [name,current,upstream,ref]=l.split('\t');return {name,current:current==='*',upstream,remote:ref.startsWith('refs/remotes/')};}),commits:logs.split('\x1e').map(s=>s.trim()).filter(Boolean).map(l=>{const [hash,parents,author,date,subject,refs]=l.split('\x1f');return {hash,parents:parents?parents.split(' '):[],author,date,subject,refs};}),stashes:stashRaw.trim().split('\n').filter(Boolean).map(l=>{const [ref,subject,date]=l.split('\x1f');return {ref,subject,date};}),remotes:remotes.trim(),counts:counts.trim(),merging};
+ }
+ async commitIdentity(){
+ const [head,ref,index,gitDir]=await Promise.all([this.git(['rev-parse','--verify','HEAD'],true),this.git(['symbolic-ref','-q','HEAD'],true),this.git(['ls-files','--stage','-z']),this.git(['rev-parse','--absolute-git-dir'])]);
+ const merge=await fs.readFile(path.join(gitDir.trim(),'MERGE_HEAD'),'utf8').catch(e=>{if(e.code==='ENOENT')return '';throw e;});
+ return JSON.stringify({repo:this.repo,head,ref,index,merge});
+ }
+ async commitPreview(){
+ const before=await this.commitIdentity();
+ const diff=await this.git(['diff','--cached','--no-ext-diff','--no-textconv','--binary','--no-renames']);
+ const files=(await this.snapshot()).files.filter(f=>f.x!==' '&&f.x!=='?');
+ if(before!==await this.commitIdentity())throw Error('暂存区或 HEAD 已变化，请重新审阅提交');
+ return {token:createHash('sha256').update(before).update(diff).digest('hex'),files,diff};
  }
  async diff({file,staged=false,commit,stash,hunks=false}){
  if(hunks&&!commit&&!stash){const p=await this.hunkPreview(file,staged);return {diff:p.diff,hunkToken:p.token,hunks:p.hunks.map(({label},index)=>({index,label}))};}
@@ -29,7 +42,7 @@ class GitService {
  switch(action){
  case 'stageHunk':case 'unstageHunk':return await this.applyIndexHunk(action,p);
  case 'stage': case 'unstage':{if(!Array.isArray(p.files)||!p.files.length)throw Error('请选择文件');const status=await this.snapshot();const files=action==='stage'?p.files:[...new Set(p.files.flatMap(f=>{const item=status.files.find(i=>i.path===f);return item?.oldPath?[f,item.oldPath]:[f];}))];for(const f of files)await this.filePath(f);if(action==='stage')return await this.git(['add','--',...files]);const hasHead=(await this.git(['rev-parse','--verify','HEAD'],true)).trim();return await this.git(hasHead?['restore','--staged','--',...files]:['rm','--cached','--',...files]);}
- case 'commit':if(!p.message?.trim())throw Error('请输入提交说明');return await this.git(['commit','-m',p.message]);
+ case 'commit':if(!p.message?.trim())throw Error('请输入提交说明');if(typeof p.token!=='string'||p.token!==(await this.commitPreview()).token)throw Error('暂存区或 HEAD 已变化，请重新审阅提交');return await this.git(['commit','-m',p.message]);
  case 'createBranch':if(!p.name||p.name.startsWith('-'))throw Error('请输入有效分支名');await this.git(['check-ref-format','--branch',p.name]);return await this.git(['switch','-c',p.name]);
  case 'track':{if(!p.name||p.name.startsWith('-')||p.name.endsWith('/HEAD'))throw Error('无效远程分支');const ref='refs/remotes/'+p.name;await this.git(['show-ref','--verify',ref]);const local=p.name.slice(p.name.indexOf('/')+1);await this.git(['check-ref-format','--branch',local]);return await this.git(['switch','--track','-c',local,ref]);}
  case 'switch':if(!p.name||p.name.startsWith('-'))throw Error('无效分支名');return await this.git(['switch',p.name]);
@@ -98,14 +111,56 @@ class GitService {
  const hunks=this.splitHunks(diff);
  return {file,token,diff,hunks,untracked:status.x==='?',status};
  }
+ async recoveryList(){return this.recovery?this.recovery.run(()=>this.recovery.list()):[];}
+ async recoveryClear(){if(!this.recovery)return {cleared:0};if(this.busy)throw Error('另一个操作正在执行');this.busy=true;try{return await this.recovery.run(()=>this.recovery.clear());}finally{this.busy=false;}}
+ async recoveryBinding(record){
+ const current=await recoveryState(this.repo,record.file);
+ const status=await this.snapshot();if(status.files.some(f=>f.path===record.file&&f.conflict))throw Error('文件存在冲突，请先解决冲突');
+ const index=await this.git(['ls-files','--stage','-z']);
+ const entries=(await this.git(['ls-files','--stage','-z','--',':(literal)'+record.file])).split('\0').filter(Boolean);
+ if(entries.some(x=>!new RegExp('^100(?:644|755) [a-f0-9]+ 0\\t').test(x)))throw Error('恢复仅支持普通文件，禁止冲突或链接');
+ return createHash('sha256').update(JSON.stringify({id:record.id,digest:record.digest,current,index})).digest('hex');
+ }
+ async recoveryPreview(id){
+ if(!this.recovery)throw Error('未启用恢复安全网');
+ return this.recovery.run(async()=>{const r=await this.recovery.get(id);const token=await this.recoveryBinding(r);return {id:r.id,file:r.file,createdAt:r.createdAt,outcome:r.outcome,exists:r.state.exists,encoding:'base64',content:r.state.exists?r.state.data:null,token};});
+ }
+ async recoveryRestore({id,token}){
+ if(!this.recovery)throw Error('未启用恢复安全网');if(this.busy)throw Error('另一个操作正在执行');this.busy=true;
+ try{return await this.recovery.run(async()=>{
+ const r=await this.recovery.get(id);if(typeof token!=='string'||token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');
+ const backup=await this.recovery.capture(r.file,'undo');
+ try{
+ if(token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');
+ let target=await regularPath(this.repo,r.file);
+ if(r.state.exists){
+ await fs.mkdir(path.dirname(target),{recursive:true});target=await regularPath(this.repo,r.file);
+ const temp=path.join(path.dirname(target),'.branchcraft-'+require('node:crypto').randomUUID());
+ try{await fs.writeFile(temp,Buffer.from(r.state.data,'base64'),{flag:'wx',mode:r.state.mode});if(token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');await regularPath(this.repo,r.file);await fs.rename(temp,target);}finally{await fs.rm(temp,{force:true});}
+ }else{if(token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');target=await regularPath(this.repo,r.file);try{await fs.unlink(target);}catch(e){if(e.code!=='ENOENT')throw e;}}
+ await this.recovery.finish(backup,'success');return {message:'已恢复工作区，暂存区保持不变',backupId:backup.id};
+ }catch(e){await this.recovery.finish(backup,'failed',e);throw e;}
+ });}finally{this.busy=false;}
+ }
  async rollback({file,token,hunk}){
- if(this.busy)throw Error('另一个操作正在执行');this.busy=true;let temp;
+ if(this.busy)throw Error('另一个操作正在执行');this.busy=true;
+ const perform=async()=>{
+ let temp,backup;
  try{const current=await this.rollbackPreview(file);if(current.token!==token)throw Error('文件或暂存区已变化，请重新查看差异后回退');
- if(hunk!==undefined){if(!Number.isInteger(hunk)||!current.hunks[hunk])throw Error('无效代码块');temp=await fs.mkdtemp(path.join(os.tmpdir(),'branchcraft-patch-'));const patch=path.join(temp,'reverse.patch');await fs.writeFile(patch,current.hunks[hunk].patch);await this.git(['apply','--reverse','--check','--',patch]);await this.git(['apply','--reverse','--',patch]);}
+ let patch;
+ if(hunk!==undefined){if(!Number.isInteger(hunk)||!current.hunks[hunk])throw Error('无效代码块');temp=await fs.mkdtemp(path.join(os.tmpdir(),'branchcraft-patch-'));patch=path.join(temp,'reverse.patch');await fs.writeFile(patch,current.hunks[hunk].patch);await this.git(['apply','--reverse','--check','--',patch]);}
+ if(this.recovery){await this.recoveryBinding({file,id:'rollback',digest:''});backup=await this.recovery.capture(file,hunk===undefined?'whole':'hunk');}
+ if((await this.rollbackPreview(file)).token!==token)throw Error('文件或暂存区已变化，请重新查看差异后回退');
+ if(this.recovery)await regularPath(this.repo,file);
+ if(hunk!==undefined)await this.git(['apply','--reverse','--',patch]);
  else if(current.untracked)await fs.unlink(await this.filePath(file));
- else await this.git(['restore','--worktree','--',file]);
+ else await this.git(['restore','--worktree','--',':(literal)'+file]);
+ if(backup)await this.recovery.finish(backup,'success');
  return '已回退未暂存修改，暂存区保持不变';
- }finally{if(temp)await fs.rm(temp,{recursive:true,force:true});this.busy=false;}
+ }catch(e){if(backup)await this.recovery.finish(backup,'failed',e);throw e;}
+ finally{if(temp)await fs.rm(temp,{recursive:true,force:true});}
+ };
+ try{return await (this.recovery?this.recovery.run(perform):perform());}finally{this.busy=false;}
  }
  async stashHash(ref){this.checkStash(ref);return (await this.git(['rev-parse',ref])).trim();}
  async conflict(file){const f=await this.filePath(file);const stat=await fs.stat(f);if(stat.size>2*1024*1024)throw Error('文件超过 2MB，请用外部编辑器处理');const raw=await fs.readFile(f);if(raw.includes(0))throw Error('二进制冲突请用外部工具处理');const [base,ours,theirs]=await Promise.all([1,2,3].map(n=>this.git(['show',`:${n}:${file}`],true)));return {file,base,ours,theirs,content:raw.toString('utf8')};}

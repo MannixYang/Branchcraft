@@ -16,3 +16,5 @@
 .hunk-action.danger{border-color:#a56557;background:#422b29;color:#ffd1bf}
 .hunk-action:hover{filter:brightness(1.3)}.hunk-action:focus-visible{outline:2px solid #d0ff89;outline-offset:2px}
 .actionable-diff .line-num{flex-shrink:0}.folder-toggle{width:100%;text-align:left}
+
+.wide-dialog{width:min(1050px,90vw);max-width:90vw;max-height:88vh;overflow:auto}.wide-dialog::backdrop{background:#080d12bd}.wide-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere}.review-diff{max-height:43vh;overflow:auto;background:#121b21;border:1px solid #344039}.review-diff pre{white-space:pre;overflow:visible}#reviewFeedback{padding:12px;border-left:3px solid #b7ed91;max-height:20vh;overflow:auto}#recoveryRows{max-height:23vh;overflow:auto}.recovery-row{display:block;width:100%;text-align:left;padding:10px;margin:4px 0}#recoveryContent{max-height:35vh;overflow:auto;background:#121b21;padding:12px}.folder-contents{border-left:1px solid #435449;margin-left:14px;padding-left:8px}.group-label{position:sticky;top:0;z-index:1;background:#19252b;padding:12px 10px;border-bottom:1px solid #435449}
