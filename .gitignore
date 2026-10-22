@@ -2,3 +2,5 @@ node_modules/
 release/
 screenshots/
 *.log
+validation-context.tar
+cross-*-result.json

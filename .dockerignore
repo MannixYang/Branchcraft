@@ -1,0 +1,7 @@
+node_modules
+release
+screenshots
+.git
+*.log
+*.tar
+cross-*-result.json

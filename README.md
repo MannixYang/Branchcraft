@@ -1,10 +1,10 @@
 # Branchcraft
 
-面向 Windows 的 Git 可视化桌面应用，使用 Electron 与原生 JavaScript。直接调用本机 Git，非静态演示。
+面向 Windows、Linux 与 macOS 的 Git 可视化桌面应用，使用 Electron 与原生 JavaScript。直接调用本机 Git，非静态演示。
 
 ## 启动
 
-便携版：双击 `release/Branchcraft 1.0.0.exe`。无需安装 Node.js，但必须安装 Git for Windows，并确保 `git --version` 可在终端执行。便携版仅表示无需安装应用，Electron 的用户设置仍会存放在系统用户目录。应用未配置发布者代码签名，Windows 可能显示安全提示；请只运行可信来源的程序。
+便携版：双击 `release/Branchcraft-1.0.0-win-x64-portable.exe`。无需安装 Node.js，但必须安装 Git for Windows，并确保 `git --version` 可在终端执行。便携版仅表示无需安装应用，Electron 的用户设置仍会存放在系统用户目录。应用未配置发布者代码签名，Windows 可能显示安全提示；请只运行可信来源的程序。
 
 开发运行（PowerShell）：
 
@@ -44,7 +44,7 @@ npm.cmd run pack
 npm.cmd run dist
 ```
 
-`npm test` 在系统临时目录创建独立仓库，覆盖 12 项 Git 集成测试：首次提交与中文路径、暂存区 Diff、目录删除、重命名、分支、合并冲突、取消合并、Stash 完整流程、过期引用与 pop 冲突、本地远程同步、路径与并发防护、二进制与大文件。
+`npm test` 在系统临时目录创建独立仓库，覆盖 12 项 Git 集成测试及平台环境测试：首次提交与中文路径、暂存区 Diff、目录删除、重命名、分支、合并冲突、取消合并、Stash 完整流程、过期引用与 pop 冲突、本地远程同步、路径与并发防护、二进制与大文件。
 
 桌面烟雾测试（可选开发工具）：
 
@@ -65,4 +65,30 @@ node test/desktop-smoke.cjs
 - `test/git-service.test.js`：后端集成测试。
 - `test/desktop-smoke.cjs`：真实桌面烟雾测试。
 
-未设置开源许可证；如需公开发布，请自行确定适合的许可证并补齐品牌图标与代码签名。
+package.json 的许可证元数据标注为 MIT，但当前未附完整 LICENSE 文本；公开发布前请确认授权并补齐许可证文件、品牌图标与代码签名。Linux 包中的维护者邮箱为 example.invalid 占位值，正式发布前请替换为有效维护信息。
+
+## 三平台构建与运行
+
+| 系统 | 架构 | 产物 | 系统要求与注意事项 |
+|---|---|---|---|
+| Windows | x64 | NSIS 安装程序、portable EXE | Windows 10/11；预装 Git for Windows |
+| Linux | x64 | AppImage、deb | 建议 Ubuntu 22.04+ 桌面；预装 Git、GTK3/NSS/GBM 等运行库 |
+| macOS | Intel x64、Apple Silicon arm64 | DMG、ZIP | 建议 macOS 12+；预装 Git；选择匹配 CPU 的安装包 |
+
+源码开发需要 Node.js 24 与 npm。各系统在项目根目录执行 `npm ci`、`npm start`。`npm run pack` 打包当前系统目录，`npm run dist` 生成当前平台发行文件；显式命令为 `npm run dist:win`、`npm run dist:linux`、`npm run dist:mac`。macOS 发行构建请在 macOS 上运行；不要尝试通过普通 Linux Docker 容器构建/验证原生 macOS 应用。
+
+macOS 关闭最后一个窗口后保留应用，通过 Dock 可重新打开；提供原生编辑菜单，支持 Cmd+C/V/Z 等快捷键。GUI 启动时补充 Homebrew 和系统 Git 常用路径，不读取或执行 shell 配置。自定义 Git 路径可通过启动应用前设置 `BRANCHCRAFT_GIT`（绝对路径，不能附加命令参数）。SSH agent 和原有环境变量保留；GUI 不一定继承终端的自定义 SSH 环境。
+
+Linux AppImage 可能需要 `chmod +x 文件.AppImage` 和 FUSE（Ubuntu 22.04 可安装 `libfuse2`）；也可使用 deb 安装。不要以 root 身份运行桌面程序，不建议通过 `--no-sandbox` 规避权限问题。用户数据通过 Electron 的系统目录保存：Windows `%APPDATA%/Branchcraft`、macOS `~/Library/Application Support/Branchcraft`、Linux `$XDG_CONFIG_HOME/Branchcraft` 或 `~/.config/Branchcraft`，以实际 Electron userData 路径为准。
+
+### GitHub Actions
+
+`.github/workflows/build.yml` 在 main/master 推送、PR、v 开头标签及手动触发时执行：Windows x64、Ubuntu x64、macOS Intel 和 Apple Silicon 原生 runner 分别安装依赖、运行后端测试和真实 Electron 源码桌面烟雾测试，再打包对应平台。Linux 使用 Xvfb；每个任务还会启动打包目录中的可执行程序进行桌面回归，再上传安装包和测试截图到该次运行的 Artifacts。需将源码（含 package-lock.json 与 .github）推送至你有权限的 GitHub 仓库并启用 Actions；本地生成配置不代表云端任务已执行。工作流不会自动发布 Release，也不需要签名密钥。
+
+当前发行包未配置 Windows 签名或 Apple 签名/公证。macOS 可能被 Gatekeeper 拦截，请仅对可信来源按系统设置允许；正式公开发行需配置 Developer ID、签名及公证。默认图标仍为 Electron 图标。平台配置与 CI 并不等同于对应平台已经通过实测，具体以随附验证记录及实际 Actions 日志为准。
+
+### Docker 中的 Linux 验证
+
+在 Docker Linux 引擎执行 `docker build -f Dockerfile.validation -t branchcraft-validation .`，然后执行 `docker run --name branchcraft-validation branchcraft-validation`。容器自动运行 14 项测试、Xvfb Electron 桌面烟雾测试并生成 Linux AppImage/deb。可用 `docker cp branchcraft-validation:/app/release ./linux-release` 提取产物，再自行删除测试容器。
+
+容器专用测试开关 `BRANCHCRAFT_TEST_NO_SANDBOX=1` 仅给测试启动器传递 `--no-sandbox`，用于 Docker 缺少用户命名空间权限的场景，不改变正式应用默认 sandbox 设置。容器结果不代表真实 Linux 桌面环境、Wayland、FUSE 启动、外部网络认证或 macOS 通过测试。普通 Linux 容器不能运行 macOS Cocoa 应用。

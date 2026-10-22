@@ -2,9 +2,10 @@
 const {execFile}=require('node:child_process');
 const fs=require('node:fs/promises');
 const path=require('node:path');
+const {gitEnvironment,gitExecutable}=require('./platform');
 class GitService {
  constructor(repo){this.repo=repo;this.busy=false;}
- async git(args,allowFailure=false){return new Promise((resolve,reject)=>execFile('git',['-c','core.quotepath=false','-c','color.ui=false',...args],{cwd:this.repo,encoding:'utf8',maxBuffer:24*1024*1024,timeout:120000,windowsHide:true,env:{...process.env,GIT_TERMINAL_PROMPT:'0',GIT_MERGE_AUTOEDIT:'no'}},(err,stdout,stderr)=>{if(err&&!allowFailure)reject(new Error((stderr||stdout||err.message).trim()));else resolve(stdout);}));}
+ async git(args,allowFailure=false){return new Promise((resolve,reject)=>execFile(gitExecutable(),['-c','core.quotepath=false','-c','color.ui=false',...args],{cwd:this.repo,encoding:'utf8',maxBuffer:24*1024*1024,timeout:120000,windowsHide:true,env:{...gitEnvironment(),GIT_TERMINAL_PROMPT:'0',GIT_MERGE_AUTOEDIT:'no'}},(err,stdout,stderr)=>{if(err&&!allowFailure)reject(new Error(err.code==='ENOENT'?'未找到 Git。请安装系统 Git，或设置 BRANCHCRAFT_GIT 为绝对路径。':(stderr||stdout||err.message).trim()));else resolve(stdout);}));}
  async filePath(name){if(typeof name!=='string'||!name||name.includes('\0'))throw Error('无效文件路径');const target=path.resolve(this.repo,name);const rel=path.relative(this.repo,target);if((rel==='..'||rel.startsWith('..'+path.sep))||path.isAbsolute(rel)||rel.split(/[\\/]/).some(x=>x.toLowerCase()==='.git'))throw Error('不允许访问仓库外部或 Git 内部文件');const root=await fs.realpath(this.repo);let ancestor=target;let actual;for(;;){try{actual=await fs.realpath(ancestor);break;}catch(e){if(!['ENOENT','ENOTDIR'].includes(e.code))throw e;const parent=path.dirname(ancestor);if(parent===ancestor)throw e;ancestor=parent;}}const relative=path.relative(root,actual);if((relative==='..'||relative.startsWith('..'+path.sep))||path.isAbsolute(relative))throw Error('禁止通过链接访问仓库外部文件');return target;}
  async snapshot(){
  const raw=await this.git(['status','--porcelain=v1','-z','--untracked-files=all']);const parts=raw.split('\0');const files=[];

@@ -1,6 +1,104 @@
 {
- "name":"branchcraft","version":"1.0.0","description":"本地 Git 可视化桌面工作台","main":"main.js","author":"Branchcraft","license":"MIT",
- "scripts":{"start":"electron .","test":"node --test test/*.test.js","pack":"electron-builder --win --dir","dist":"electron-builder --win portable"},
- "devDependencies":{"electron":"^42.0.0","electron-builder":"^26.0.12"},
- "build":{"appId":"local.branchcraft.desktop","productName":"Branchcraft","directories":{"output":"release"},"files":["main.js","preload.js","git-service.js","index.html","renderer.js","styles.css","package.json"],"win":{"target":"portable","signAndEditExecutable":false}}
+  "name": "branchcraft",
+  "version": "1.0.0",
+  "description": "本地 Git 可视化桌面工作台",
+  "main": "main.js",
+  "author": "Branchcraft",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/git-service.test.js test/platform.test.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --publish never",
+    "test:desktop": "node test/desktop-smoke.cjs",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-builder --linux --x64 --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
+  },
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "local.branchcraft.desktop",
+    "productName": "Branchcraft",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "git-service.js",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "package.json",
+      "platform.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-${version}-win-${arch}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-win-${arch}-portable.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "maintainer": "Branchcraft <branchcraft@example.invalid>"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    }
+  },
+  "homepage": "https://branchcraft.example.invalid"
 }
