@@ -1,13 +1,13 @@
 {
   "name": "branchcraft",
   "version": "1.0.0",
-  "description": "本地 Git 可视化桌面工作台",
+  "description": "\u672c\u5730 Git \u53ef\u89c6\u5316\u684c\u9762\u5de5\u4f5c\u53f0",
   "main": "main.js",
   "author": "Branchcraft",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/git-service.test.js test/platform.test.js test/file-tree.test.js",
+    "test": "node --test test/git-service.test.js test/platform.test.js test/file-tree.test.js test/project-service.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --publish never",
     "test:desktop": "node test/desktop-smoke.cjs",
@@ -34,7 +34,9 @@
       "styles.css",
       "package.json",
       "platform.js",
-      "file-tree.js"
+      "file-tree.js",
+      "project-service.js",
+      "project-ui.js"
     ],
     "win": {
       "target": [
