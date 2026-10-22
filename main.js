@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{
  try{const saved=JSON.parse(await fs.readFile(store(),'utf8'));recent=Array.isArray(saved)?saved.filter(x=>typeof x==='string'):[];}catch{}
  register('recent',()=>recent);register('choose',async()=>{const r=await dialog.showOpenDialog(win,{title:'选择 Git 仓库目录',properties:['openDirectory']});return r.canceled?null:openRepo(r.filePaths[0]);});register('open',folder=>{if(!recent.includes(folder))throw Error('请通过目录选择器打开仓库');return openRepo(folder);});
  const repo=()=>{if(!service)throw Error('请先打开仓库');return service;};
- register('snapshot',()=>repo().snapshot());register('diff',args=>repo().diff(args));register('action',(action,args)=>repo().mutate(action,args));register('conflict',file=>repo().conflict(file));register('resolve',args=>repo().resolve(args));register('stashHash',ref=>repo().stashHash(ref));register('reveal',()=>shell.openPath(repo().repo));
+ register('rollbackPreview',file=>repo().rollbackPreview(file));register('rollback',args=>repo().rollback(args));register('snapshot',()=>repo().snapshot());register('diff',args=>repo().diff(args));register('action',(action,args)=>repo().mutate(action,args));register('conflict',file=>repo().conflict(file));register('resolve',args=>repo().resolve(args));register('stashHash',ref=>repo().stashHash(ref));register('reveal',()=>shell.openPath(repo().repo));
  await createWindow();
  app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});
 });

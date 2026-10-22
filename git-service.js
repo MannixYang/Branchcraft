@@ -2,6 +2,8 @@
 const {execFile}=require('node:child_process');
 const fs=require('node:fs/promises');
 const path=require('node:path');
+const os=require('node:os');
+const {createHash}=require('node:crypto');
 const {gitEnvironment,gitExecutable}=require('./platform');
 class GitService {
  constructor(repo){this.repo=repo;this.busy=false;}
@@ -39,6 +41,26 @@ class GitService {
  default:throw Error('不支持的操作');
  }
  }finally{this.busy=false;}}
+
+ async rollbackPreview(file){
+ const target=await this.filePath(file);let data=Buffer.alloc(0);try{const st=await fs.lstat(target);if(!st.isFile()||st.isSymbolicLink())throw Error('仅支持普通文件回退');if(st.size>2*1024*1024)throw Error('文件超过 2MB，请使用外部工具');data=await fs.readFile(target);}catch(e){if(e.code!=='ENOENT')throw e;}
+ const status=(await this.snapshot()).files.find(f=>f.path===file);if(!status||status.conflict)throw Error('文件状态已变化，或存在冲突，请刷新');
+ const diff=await this.git(['diff','--no-ext-diff','--no-textconv','--binary','--',file]);
+ const index=await this.git(['ls-files','--stage','--',file]);
+ const token=createHash('sha256').update(JSON.stringify(status)).update(data).update(diff).update(index).digest('hex');
+ const lines=diff.split('\n');const starts=[];lines.forEach((line,i)=>{if(/^@@ /.test(line))starts.push(i);});
+ const hunks=starts.map((start,i)=>({label:lines[start],patch:lines.slice(0,starts[0]).join('\n')+'\n'+lines.slice(start,starts[i+1]??lines.length).join('\n').replace(/\n?$/,'\n')}));
+ return {file,token,diff,hunks,untracked:status.x==='?',status};
+ }
+ async rollback({file,token,hunk}){
+ if(this.busy)throw Error('另一个操作正在执行');this.busy=true;let temp;
+ try{const current=await this.rollbackPreview(file);if(current.token!==token)throw Error('文件或暂存区已变化，请重新查看差异后回退');
+ if(hunk!==undefined){if(!Number.isInteger(hunk)||!current.hunks[hunk])throw Error('无效代码块');temp=await fs.mkdtemp(path.join(os.tmpdir(),'branchcraft-patch-'));const patch=path.join(temp,'reverse.patch');await fs.writeFile(patch,current.hunks[hunk].patch);await this.git(['apply','--reverse','--check','--',patch]);await this.git(['apply','--reverse','--',patch]);}
+ else if(current.untracked)await fs.unlink(await this.filePath(file));
+ else await this.git(['restore','--worktree','--',file]);
+ return '已回退未暂存修改，暂存区保持不变';
+ }finally{if(temp)await fs.rm(temp,{recursive:true,force:true});this.busy=false;}
+ }
  async stashHash(ref){this.checkStash(ref);return (await this.git(['rev-parse',ref])).trim();}
  async conflict(file){const f=await this.filePath(file);const stat=await fs.stat(f);if(stat.size>2*1024*1024)throw Error('文件超过 2MB，请用外部编辑器处理');const raw=await fs.readFile(f);if(raw.includes(0))throw Error('二进制冲突请用外部工具处理');const [base,ours,theirs]=await Promise.all([1,2,3].map(n=>this.git(['show',`:${n}:${file}`],true)));return {file,base,ours,theirs,content:raw.toString('utf8')};}
  async resolve({file,content}){if(this.busy)throw Error('另一个 Git 操作正在执行，请稍候');this.busy=true;try{const state=await this.snapshot();if(!state.files.some(f=>f.path===file&&f.conflict))throw Error('该文件已不处于冲突状态，请刷新');if(typeof content!=='string')throw Error('无效内容');if(/^(<<<<<<< |=======\r?$|>>>>>>> )/m.test(content))throw Error('内容仍含冲突标记，请先清理');await fs.writeFile(await this.filePath(file),content,'utf8');await this.git(['add','--',file]);return '已保存并暂存解决结果';}finally{this.busy=false;}}

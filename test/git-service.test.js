@@ -34,3 +34,17 @@ test('非 origin 远程识别、显式跟踪、fetch/push/pull',async t=>{const 
 test('路径逃逸、内部目录、非法引用与并发锁防护',async t=>{const s=await repo(t);await commit(s);for(const f of ['../outside','.git/config','a\0.txt'])await assert.rejects(s.filePath(f));await assert.rejects(s.diff({commit:'--all'}));await assert.rejects(s.stashHash('HEAD'));await assert.rejects(s.mutate('stage',{files:[]}));s.busy=true;await assert.rejects(s.mutate('stashSave'),/正在执行/);await assert.rejects(s.resolve({file:'a.txt',content:'x'}),/正在执行/);s.busy=false;await assert.rejects(s.resolve({file:'a.txt',content:'x'}),/冲突状态/);});
 
 test('二进制和大文件预览边界',async t=>{const s=await repo(t);await write(s,'binary.bin',Buffer.from([0,1,2]));assert.equal(await s.diff({file:'binary.bin'}),'二进制文件');await write(s,'large.txt',Buffer.alloc(2*1024*1024+1,65));assert.match(await s.diff({file:'large.txt'}),/超过 2MB/);});
+
+
+test('安全回退：保护暂存区，代码块及过期检测',async t=>{
+ const s=await repo(t);const base=Array.from({length:30},(_,i)=>'line '+i+'\n').join('');await commit(s,'a.txt',base);
+ const staged=base.replace('line 2\n','staged\n');await write(s,'a.txt',staged);await s.mutate('stage',{files:['a.txt']});
+ const changed=staged.replace('line 10\n','changed one\n').replace('line 25\n','changed two\n');await write(s,'a.txt',changed);
+ const index=await s.git(['show',':a.txt']);let preview=await s.rollbackPreview('a.txt');assert.equal(preview.hunks.length,2);
+ await s.rollback({file:'a.txt',token:preview.token,hunk:0});assert.equal(await s.git(['show',':a.txt']),index);
+ assert.equal(await fs.readFile(path.join(s.repo,'a.txt'),'utf8'),staged.replace('line 25\n','changed two\n'));
+ await assert.rejects(s.rollback({file:'a.txt',token:preview.token}),/已变化/);
+ preview=await s.rollbackPreview('a.txt');await s.rollback({file:'a.txt',token:preview.token});assert.equal(await fs.readFile(path.join(s.repo,'a.txt'),'utf8'),staged);assert.equal(await s.git(['show',':a.txt']),index);
+ await write(s,'new.txt','new');preview=await s.rollbackPreview('new.txt');await s.rollback({file:'new.txt',token:preview.token});await assert.rejects(fs.stat(path.join(s.repo,'new.txt')));
+ await assert.rejects(s.rollbackPreview('../escape'),/不允许/);
+});
