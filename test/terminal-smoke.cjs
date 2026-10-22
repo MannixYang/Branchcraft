@@ -11,9 +11,17 @@ await page.locator('.xterm-helper-textarea').focus();await page.keyboard.type("W
 await write("Write-Output ('DESCENDER_'+ 'ggjjppqqyy')\r");await output('DESCENDER_ggjjppqqyy');
 await page.waitForFunction(()=>document.querySelector('.xterm-screen').textContent.includes('DESCENDER_ggjjppqqyy'));
 await page.locator('.xterm-helper-textarea').focus();
+async function cursorMetrics(selector){return page.locator(selector).evaluate(n=>{const s=getComputedStyle(n),r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,background:s.backgroundColor,outline:s.outlineStyle};});}
+const cursor=await cursorMetrics('.xterm.focus .xterm-cursor-block');
+assert.ok(cursor.width>=5&&cursor.height>=13,'光标必须有真实绘制面积: '+JSON.stringify(cursor));
+assert.equal(cursor.background,'rgb(208, 255, 137)','聚焦光标必须绘制高对比背景');
+await page.keyboard.type('CURSOR_POSITION');await page.waitForTimeout(300);
+const typed=await cursorMetrics('.xterm.focus .xterm-cursor-block');assert.ok(typed.x!==cursor.x||typed.y!==cursor.y,'键盘输入必须移动实际光标');
+await page.keyboard.press('ArrowLeft');await page.waitForTimeout(150);const left=await cursorMetrics('.xterm.focus .xterm-cursor-block');assert.ok(left.x<typed.x||left.y<typed.y,'左移必须更新光标位置');
+await page.keyboard.press('Control+c');await page.waitForTimeout(300);
 const metrics=await page.evaluate(()=>{const row=[...document.querySelectorAll('.xterm-rows > div')].find(n=>n.textContent.includes('DESCENDER_ggjjppqqyy'));const style=getComputedStyle(row),span=row.querySelector('span'),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=getComputedStyle(span).font;const ink=ctx.measureText('gjpqy');return {height:row.getBoundingClientRect().height,font:parseFloat(style.fontSize),ink:ink.actualBoundingBoxAscent+ink.actualBoundingBoxDescent,cursor:!!document.querySelector('.xterm.focus .xterm-cursor-block'),blink:!!document.querySelector('.xterm-cursor-blink'),line:style.lineHeight};});
 assert.ok(metrics.height>=metrics.font*1.3,JSON.stringify(metrics));assert.ok(metrics.height>=metrics.ink+3,JSON.stringify(metrics));assert.ok(metrics.cursor,'聚焦时应有块状光标');assert.equal(metrics.blink,false,'光标持续可见');console.log('字体与行框检查',metrics);
-await page.locator('#commitMessage').focus();assert.ok(await page.locator('.xterm-cursor-outline').count(),'失焦时应有轮廓光标');await page.locator('.xterm-helper-textarea').focus();
+await page.locator('#commitMessage').focus();const inactive=await cursorMetrics('.xterm-cursor-outline');assert.ok(inactive.width>=5&&inactive.outline==='solid','失焦光标必须绘制轮廓: '+JSON.stringify(inactive));await page.locator('.xterm-helper-textarea').focus();
 if(process.env.BRANCHCRAFT_SCREENSHOT)await page.locator('#terminalPanel').screenshot({path:process.env.BRANCHCRAFT_SCREENSHOT});
 
 await write('Start-Sleep -Seconds 30\r');await page.waitForTimeout(700);await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Control+c');await page.waitForTimeout(500);await write("Write-Output ('CANCEL_'+(6*7))\r");await output('CANCEL_42');
