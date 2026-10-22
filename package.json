@@ -86,7 +86,7 @@
         }
       ],
       "category": "Development",
-      "maintainer": "Branchcraft <branchcraft@example.invalid>"
+      "maintainer": "MannixYang"
     },
     "mac": {
       "target": [
@@ -112,7 +112,14 @@
       "node_modules/node-pty/**"
     ]
   },
-  "homepage": "https://branchcraft.example.invalid",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MannixYang/Branchcraft.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MannixYang/Branchcraft/issues"
+  },
+  "homepage": "https://github.com/MannixYang/Branchcraft",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",

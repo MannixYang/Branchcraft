@@ -3,7 +3,7 @@ const {execFile}=require('node:child_process');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
-const {createHash}=require('node:crypto');
+const {createHash,randomUUID}=require('node:crypto');
 const {gitEnvironment,gitExecutable}=require('./platform');
 const {RecoveryStore,regularPath,state:recoveryState}=require('./recovery-store');
 class GitService {
@@ -32,16 +32,16 @@ class GitService {
  }
  async diff({file,staged=false,commit,stash,hunks=false}){
  if(hunks&&!commit&&!stash){const p=await this.hunkPreview(file,staged);return {diff:p.diff,hunkToken:p.token,hunks:p.hunks.map(({label},index)=>({index,label}))};}
- if(commit){if(!/^[a-f0-9]{40}$/.test(commit))throw Error('无效提交');return this.git(['show','--no-ext-diff','--no-textconv','--format=fuller','--stat','--patch',commit,...(file?['--',file]:[])]);}
+ if(commit){if(!/^[a-f0-9]{40}$/.test(commit))throw Error('无效提交');return this.git(['show','--no-ext-diff','--no-textconv','--format=fuller','--stat','--patch',commit,...(file?['--',':(literal)'+file]:[])]);}
  if(stash){this.checkStash(stash);return this.git(['stash','show','--no-ext-diff','--no-textconv','--include-untracked','--stat','--patch',stash]);}
- await this.filePath(file);const status=await this.git(['status','--porcelain=v1','--',file]);if(status.startsWith('??')){const stat=await fs.stat(await this.filePath(file));if(stat.size>2*1024*1024)return '文件超过 2MB，暂不预览。';const data=await fs.readFile(await this.filePath(file));return data.includes(0)?'二进制文件':data.toString('utf8').split('\n').map(x=>'+'+x).join('\n');}
- return this.git(['diff',...(staged?['--cached']:[]),'--no-ext-diff','--no-textconv','--',file]);
+ await this.filePath(file);const status=await this.git(['status','--porcelain=v1','--',':(literal)'+file]);if(status.startsWith('??')){const stat=await fs.stat(await this.filePath(file));if(stat.size>2*1024*1024)return '文件超过 2MB，暂不预览。';const data=await fs.readFile(await this.filePath(file));return data.includes(0)?'二进制文件':data.toString('utf8').split('\n').map(x=>'+'+x).join('\n');}
+ return this.git(['diff',...(staged?['--cached']:[]),'--no-ext-diff','--no-textconv','--',':(literal)'+file]);
  }
  checkStash(ref){if(!/^stash@\{\d+\}$/.test(ref))throw Error('无效 Stash 引用');}
  async mutate(action,p={}){if(this.busy)throw Error('另一个 Git 操作正在执行，请稍候');this.busy=true;try{
  switch(action){
  case 'stageHunk':case 'unstageHunk':return await this.applyIndexHunk(action,p);
- case 'stage': case 'unstage':{if(!Array.isArray(p.files)||!p.files.length)throw Error('请选择文件');const status=await this.snapshot();const files=action==='stage'?p.files:[...new Set(p.files.flatMap(f=>{const item=status.files.find(i=>i.path===f);return item?.oldPath?[f,item.oldPath]:[f];}))];for(const f of files)await this.filePath(f);if(action==='stage')return await this.git(['add','--',...files]);const hasHead=(await this.git(['rev-parse','--verify','HEAD'],true)).trim();return await this.git(hasHead?['restore','--staged','--',...files]:['rm','--cached','--',...files]);}
+ case 'stage': case 'unstage':{if(!Array.isArray(p.files)||!p.files.length)throw Error('请选择文件');const status=await this.snapshot();const files=action==='stage'?p.files:[...new Set(p.files.flatMap(f=>{const item=status.files.find(i=>i.path===f);return item?.oldPath?[f,item.oldPath]:[f];}))];for(const f of files)await this.filePath(f);if(action==='stage')return await this.git(['add','--',...files.map(f=>':(literal)'+f)]);const hasHead=(await this.git(['rev-parse','--verify','HEAD'],true)).trim();return await this.git(hasHead?['restore','--staged','--',...files.map(f=>':(literal)'+f)]:['rm','--cached','--',...files.map(f=>':(literal)'+f)]);}
  case 'commit':if(!p.message?.trim())throw Error('请输入提交说明');if(typeof p.token!=='string'||p.token!==(await this.commitPreview()).token)throw Error('暂存区或 HEAD 已变化，请重新审阅提交');return await this.git(['commit','-m',p.message]);
  case 'createBranch':if(!p.name||p.name.startsWith('-'))throw Error('请输入有效分支名');await this.git(['check-ref-format','--branch',p.name]);return await this.git(['switch','-c',p.name]);
  case 'track':{if(!p.name||p.name.startsWith('-')||p.name.endsWith('/HEAD'))throw Error('无效远程分支');const ref='refs/remotes/'+p.name;await this.git(['show-ref','--verify',ref]);const local=p.name.slice(p.name.indexOf('/')+1);await this.git(['check-ref-format','--branch',local]);return await this.git(['switch','--track','-c',local,ref]);}
@@ -106,7 +106,7 @@ class GitService {
  const target=await this.filePath(file);let data=Buffer.alloc(0);try{const st=await fs.lstat(target);if(!st.isFile()||st.isSymbolicLink())throw Error('仅支持普通文件回退');if(st.size>2*1024*1024)throw Error('文件超过 2MB，请使用外部工具');data=await fs.readFile(target);}catch(e){if(e.code!=='ENOENT')throw e;}
  const status=(await this.snapshot()).files.find(f=>f.path===file);if(!status||status.conflict)throw Error('文件状态已变化，或存在冲突，请刷新');
  const diff=await this.git(['diff','--no-ext-diff','--no-textconv','--binary','--no-renames','--no-color','--src-prefix=a/','--dst-prefix=b/','--unified=3','--inter-hunk-context=0','--',':(literal)'+file]);
- const index=await this.git(['ls-files','--stage','--',file]);
+ const index=await this.git(['ls-files','--stage','--',':(literal)'+file]);
  const token=createHash('sha256').update(JSON.stringify(status)).update(data).update(diff).update(index).digest('hex');
  const hunks=this.splitHunks(diff);
  return {file,token,diff,hunks,untracked:status.x==='?',status};
@@ -166,7 +166,37 @@ class GitService {
  try{return await (this.recovery?this.recovery.run(perform):perform());}finally{this.busy=false;}
  }
  async stashHash(ref){this.checkStash(ref);return (await this.git(['rev-parse',ref])).trim();}
- async conflict(file){const f=await this.filePath(file);const stat=await fs.stat(f);if(stat.size>2*1024*1024)throw Error('文件超过 2MB，请用外部编辑器处理');const raw=await fs.readFile(f);if(raw.includes(0))throw Error('二进制冲突请用外部工具处理');const [base,ours,theirs]=await Promise.all([1,2,3].map(n=>this.git(['show',`:${n}:${file}`],true)));return {file,base,ours,theirs,content:raw.toString('utf8')};}
- async resolve({file,content}){if(this.busy)throw Error('另一个 Git 操作正在执行，请稍候');this.busy=true;try{const state=await this.snapshot();if(!state.files.some(f=>f.path===file&&f.conflict))throw Error('该文件已不处于冲突状态，请刷新');if(typeof content!=='string')throw Error('无效内容');if(/^(<<<<<<< |=======\r?$|>>>>>>> )/m.test(content))throw Error('内容仍含冲突标记，请先清理');await fs.writeFile(await this.filePath(file),content,'utf8');await this.git(['add','--',file]);return '已保存并暂存解决结果';}finally{this.busy=false;}}
+ async conflictState(file){
+ const index=await this.git(['ls-files','--unmerged','--stage','-z','--',':(literal)'+file]);
+ const target=await regularPath(this.repo,file);const stat=await fs.lstat(target);
+ if(!stat.isFile()||stat.isSymbolicLink())throw Error('冲突仅支持普通文件，禁止链接');
+ if(stat.size>2*1024*1024)throw Error('文件超过 2MB，请用外部编辑器处理');
+ const raw=await fs.readFile(target);if(raw.includes(0))throw Error('二进制冲突请用外部工具处理');
+ if(!index)throw Error('该文件已不处于冲突状态，请刷新');
+ if(index.split('\0').filter(Boolean).some(e=>!/^100(?:644|755) [a-f0-9]+ [123]\t/.test(e)))throw Error('冲突仅支持普通文件，禁止链接');
+ const token=createHash('sha256').update(JSON.stringify({repo:this.repo,file,mode:stat.mode,index})).update(raw).digest('hex');
+ return {target,stat,raw,token};
+ }
+ async conflict(file){
+ const current=await this.conflictState(file);
+ const [base,ours,theirs]=await Promise.all([1,2,3].map(n=>this.git(['show',`:${n}:${file}`],true)));
+ if((await this.conflictState(file)).token!==current.token)throw Error('文件或暂存区已变化，请重新预览冲突');
+ return {file,base,ours,theirs,content:current.raw.toString('utf8'),token:current.token};
+ }
+ async resolve({file,content,token}){
+ if(this.busy)throw Error('另一个 Git 操作正在执行，请稍候');this.busy=true;let temp;
+ try{
+ const current=await this.conflictState(file);
+ if(typeof token!=='string'||token!==current.token)throw Error('文件或暂存区已变化或缺少预览 token，请重新预览冲突');
+ if(typeof content!=='string')throw Error('无效内容');
+ if(/^(<<<<<<< |=======\r?$|>>>>>>> )/m.test(content))throw Error('内容仍含冲突标记，请先清理');
+ temp=path.join(path.dirname(current.target),'.branchcraft-conflict-'+randomUUID()+'.tmp');
+ const handle=await fs.open(temp,'wx',current.stat.mode&0o777);
+ try{await handle.writeFile(content,'utf8');await handle.chmod(current.stat.mode&0o777);}finally{await handle.close();}
+ if((await this.conflictState(file)).token!==token)throw Error('文件或暂存区已变化，请重新预览冲突');
+ await fs.rename(temp,current.target);
+ await this.git(['add','--',':(literal)'+file]);return '已保存并暂存解决结果';
+ }finally{try{if(temp)await fs.rm(temp,{force:true});}finally{this.busy=false;}}
+ }
 }
 module.exports={GitService};

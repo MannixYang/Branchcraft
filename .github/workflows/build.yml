@@ -1,7 +1,7 @@
 name: 三平台测试与打包
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, feature/cross-platform]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
         if: runner.os != 'Linux'
         run: npm run test:desktop
       - name: 原生平台打包
-        run: npx electron-builder --${{ matrix.target }} --${{ matrix.arch }} --publish never
+        run: node scripts/build.cjs --${{ matrix.target }} --${{ matrix.arch }} --publish never
       - name: Linux 打包版本桌面测试
         if: runner.os == 'Linux'
         run: xvfb-run -a node test/packaged-smoke.cjs
