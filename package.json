@@ -1,0 +1,6 @@
+{
+ "name":"branchcraft","version":"1.0.0","description":"本地 Git 可视化桌面工作台","main":"main.js","author":"Branchcraft","license":"MIT",
+ "scripts":{"start":"electron .","test":"node --test test/*.test.js","pack":"electron-builder --win --dir","dist":"electron-builder --win portable"},
+ "devDependencies":{"electron":"^42.0.0","electron-builder":"^26.0.12"},
+ "build":{"appId":"local.branchcraft.desktop","productName":"Branchcraft","directories":{"output":"release"},"files":["main.js","preload.js","git-service.js","index.html","renderer.js","styles.css","package.json"],"win":{"target":"portable","signAndEditExecutable":false}}
+}
