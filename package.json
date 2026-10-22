@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/git-service.test.js test/platform.test.js",
+    "test": "node --test test/git-service.test.js test/platform.test.js test/file-tree.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --publish never",
     "test:desktop": "node test/desktop-smoke.cjs",
@@ -33,7 +33,8 @@
       "renderer.js",
       "styles.css",
       "package.json",
-      "platform.js"
+      "platform.js",
+      "file-tree.js"
     ],
     "win": {
       "target": [
