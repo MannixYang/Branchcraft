@@ -44,13 +44,21 @@ async function selectFile(file,kind,key){
  const restore=async(hunk)=>{if(!current())return;if(!await modal(hunk===undefined?'恢复文件未暂存修改':'恢复此代码块','不可撤销：'+file.path+'\n'+(rollback.untracked?'未跟踪文件将被删除。':'仅恢复未暂存修改，已暂存内容保留。'),[],'确认恢复'))return;await finish(()=>api.rollback({file:file.path,token:rollback.token,...(hunk===undefined?{}:{hunk})}),'未暂存修改已恢复');};
  if(rollback)$('detailActions').append(button('恢复文件修改…',()=>restore(undefined),'danger'));
  const rows=[...pre.querySelectorAll('.diff-line')];let index=-1;
- for(const row of rows){const gutter=el('span','hunk-actions');row.prepend(gutter);if(!row.classList.contains('hunk'))continue;const hunk=++index;
+ // Added/deleted files are indivisible: expose file actions once, not misleading hunk actions.
+ const wholeFile=!file.conflict&&!file.oldPath&&(staged?/[AD]/.test(file.x):file.x==='?'||file.y==='D'||/^(new file mode|deleted file mode) /m.test(text));
+ const fileRow=wholeFile&&(rows.find(row=>row.classList.contains('hunk'))||rows[0]);
+ for(const row of rows){const gutter=el('span','hunk-actions');row.prepend(gutter);
+ if(wholeFile){if(row===fileRow){
+ const b=button(staged?'−':'＋',()=>finish(()=>api.action(staged?'unstage':'stage',{files:[file.path]}),staged?'已取消整个文件的暂存，工作区保持不变':'已暂存整个文件'),'hunk-action');b.dataset.scope='file';b.dataset.action=staged?'unstage':'stage';b.title=staged?'取消整个文件的暂存（保留工作区修改）':'暂存整个文件';b.setAttribute('aria-label',b.title);gutter.append(b);
+ if(rollback){const r=button('↶',()=>restore(undefined),'hunk-action danger');r.dataset.scope='file';r.dataset.action='restore';r.title=rollback.untracked?'恢复整个文件：删除此新增文件…':'恢复整个文件的未暂存修改…';r.setAttribute('aria-label',r.title);gutter.append(r);}
+ }continue;}
+ if(!row.classList.contains('hunk'))continue;const hunk=++index;
  if(preview?.hunks?.some(h=>h.index===hunk)){
  const b=button(staged?'−':'＋',()=>finish(()=>api.action(staged?'unstageHunk':'stageHunk',{file:file.path,token:preview.hunkToken,hunk}),staged?'已取消暂存此块，工作区保持不变':'已暂存此块，工作区保持不变'),'hunk-action');b.dataset.hunk=String(hunk);b.dataset.action=staged?'unstage':'stage';b.title=staged?'取消暂存此代码块（保留工作区修改）':'暂存此代码块';b.setAttribute('aria-label',b.title);gutter.append(b);
  }
  if(rollback&&rollback.diff===text&&rollback.hunks[hunk]){const b=button('↶',()=>restore(hunk),'hunk-action danger');b.dataset.hunk=String(hunk);b.dataset.action='restore';b.title='恢复此代码块的未暂存修改…';b.setAttribute('aria-label',b.title);gutter.append(b);}
  }
- if(reason)$('detailBody').prepend(el('div','detail-note','代码块操作不可用：'+reason+'。可使用上方整文件操作。'));
+ if(reason&&!wholeFile)$('detailBody').prepend(el('div','detail-note','代码块操作不可用：'+reason+'。可使用上方整文件操作。'));
 }
 async function selectCommit(c){selection=c.hash;renderList();await showDiff({commit:c.hash},c.subject,'COMMIT / '+c.hash.slice(0,12));}
 async function selectStash(s){selection=s.ref;renderList();let hash;try{hash=await api.stashHash(s.ref);}catch(e){toast(e.message,true);return;}if(selection!==s.ref)return;const operation=async(action,title,description)=>{if(await modal(title,description,[],title))await act(action,{ref:s.ref,hash},title+'完成');};await showDiff({stash:s.ref},s.ref+' · '+s.subject,'STASH / SAVED CHANGES',[button('应用',()=>operation('stashApply','应用 Stash','把储藏修改应用到当前工作区，保留 Stash。可能出现冲突。')),button('恢复并移除',()=>operation('stashPop','恢复并移除','应用成功后移除此 Stash；如果冲突，Git 会保留储藏。')),button('删除…',()=>operation('stashDrop','删除 Stash','此操作会删除所选储藏，可能永久丢失尚未提交的修改。\n确认删除 '+s.ref+'？'),'danger')]);}

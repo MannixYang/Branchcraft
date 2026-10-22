@@ -29,7 +29,29 @@ const fs=require('fs'),os=require('os'),path=require('path'),assert=require('nod
   await action('restore').click();await page.locator('#modal[open]').waitFor();await page.click('#modalCancel');assert.equal(fs.readFileSync(target,'utf8'),changed);
   await action('restore').click();await page.click('#modalConfirm');await idle();const firstOnly=base.replace('line 3\n','changed FIRST\n');assert.equal(fs.readFileSync(target,'utf8'),firstOnly);assert.equal(git('show',':'+file),firstOnly);
   console.log('读取已暂存');await open('staged');fs.appendFileSync(target,'external edit\n');await action('unstage').click();await idle();await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('变化'));assert.equal(git('show',':'+file),firstOnly);assert.equal(fs.readFileSync(target,'utf8'),firstOnly+'external edit\n');
-  await page.evaluate(()=>refresh());await page.locator('.item[title="new.txt"]').click();await page.waitForFunction(()=>document.querySelector('#detailBody').textContent.includes('代码块操作不可用'));assert.equal(await page.locator('[data-action="stage"]').count(),0);await page.locator('#detailActions').getByRole('button',{name:'＋ 暂存文件',exact:true}).click();await idle();assert.equal(git('show',':new.txt'),'new file\n');
+  const fileAction=type=>page.locator(`.hunk-action[data-scope="file"][data-action="${type}"]`);
+  const openFile=async(name,staged=false)=>{await page.evaluate(()=>refresh());await page.locator(`.item[title="${name}"]`)[staged?'last':'first']().click();await fileAction(staged?'unstage':'stage').waitFor();};
+  const restoreFile=async(confirm)=>{await fileAction('restore').click();await page.locator('#modal[open]').waitFor();await page.click(confirm?'#modalConfirm':'#modalCancel');await idle();};
+  const fresh=path.join(repo,'new.txt');
+  await openFile('new.txt');assert.equal(await fileAction('stage').count(),1);assert.equal(await fileAction('stage').textContent(),'＋');assert.match(await fileAction('stage').getAttribute('aria-label'),/整个文件/);
+  const fb=await fileAction('stage').boundingBox(),ln=await page.locator('.diff-line .line-num').first().boundingBox();assert.ok(fb.x+fb.width<=ln.x&&fb.width>=24&&fb.width<=28);
+  await restoreFile(false);assert.equal(fs.readFileSync(fresh,'utf8'),'new file\n');
+  fs.appendFileSync(fresh,'external\n');await restoreFile(true);await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('变化'));assert.equal(fs.readFileSync(fresh,'utf8'),'new file\nexternal\n');
+  await openFile('new.txt');await fileAction('stage').click();await idle();assert.equal(git('show',':new.txt'),'new file\nexternal\n');
+  await openFile('new.txt',true);assert.equal(await fileAction('restore').count(),0);assert.equal(await fileAction('unstage').textContent(),'−');await fileAction('unstage').click();await idle();assert.ok(fs.existsSync(fresh));assert.equal(git('ls-files','--','new.txt'),'');
+  await openFile('new.txt');await restoreFile(true);assert.equal(fs.existsSync(fresh),false);
+  console.log('新增文件整文件图标及安全恢复通过');
+  const deleted=path.join(repo,'deleted.txt');fs.writeFileSync(deleted,'delete base\n');git('add','deleted.txt');git('commit','-m','deletion fixture');fs.unlinkSync(deleted);
+  await openFile('deleted.txt');assert.equal(await fileAction('restore').count(),1);await restoreFile(false);assert.equal(fs.existsSync(deleted),false);
+  if(process.env.BRANCHCRAFT_FILE_SCREENSHOT)await page.screenshot({path:process.env.BRANCHCRAFT_FILE_SCREENSHOT});
+  await fileAction('stage').click();await idle();assert.equal(git('ls-files','--','deleted.txt'),'');assert.equal(fs.existsSync(deleted),false);
+  await openFile('deleted.txt',true);assert.equal(await fileAction('restore').count(),0);await fileAction('unstage').click();await idle();assert.equal(git('show',':deleted.txt'),'delete base\n');assert.equal(fs.existsSync(deleted),false);
+  await openFile('deleted.txt');await restoreFile(true);assert.equal(fs.readFileSync(deleted,'utf8'),'delete base\n');
+  // A staged addition may also have unstaged edits: restoring those must keep the index.
+  fs.writeFileSync(fresh,'indexed addition\n');git('add','new.txt');fs.appendFileSync(fresh,'unstaged edit\n');await page.evaluate(()=>refresh());await page.locator('.item[title="new.txt"]').first().click();await page.locator('#detailActions').getByRole('button',{name:'恢复文件修改…',exact:true}).waitFor();assert.equal(await fileAction('stage').count(),0);await page.locator('#detailActions').getByRole('button',{name:'恢复文件修改…',exact:true}).click();await page.click('#modalConfirm');await idle();assert.equal(fs.readFileSync(fresh,'utf8'),'indexed addition\n');assert.equal(git('show',':new.txt'),'indexed addition\n');
+  // Empty and binary additions have no @@ line but still expose exactly one file action group.
+  for(const [name,data] of [['empty.txt',''],['binary.dat',Buffer.from([0,1,2])]]){fs.writeFileSync(path.join(repo,name),data);await openFile(name);assert.equal(await fileAction('stage').count(),1);assert.equal(await fileAction('restore').count(),1);await restoreFile(true);assert.equal(fs.existsSync(path.join(repo,name)),false);}
+  console.log('删除文件、暂存区隔离、空文件和二进制文件通过');
   assert.deepEqual(errors,[]);
   console.log('PASS: Electron workspace bulk/search/nested/keyboard, left gutter, exact stage/unstage/restore, cancel, isolation, stale token, fallback, whole-file action, no page errors');
  }finally{if(app)await app.close();fs.rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
