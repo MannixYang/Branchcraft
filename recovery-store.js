@@ -78,12 +78,12 @@ class RecoveryStore {
   }
   return out.sort((a,b)=>a.r.createdAt-b.r.createdAt);
  }
- async prune(extra=0) {
+ async prune(extra=0,protectedId) {
   if(extra>LIMIT) throw Error('恢复快照超过 100MiB 容量');
   let rows=await this.records(); const now=Date.now();
   for(const row of rows) if(now-row.r.createdAt>=AGE) await fs.unlink(row.target);
   rows=rows.filter(row=>now-row.r.createdAt<AGE); let total=rows.reduce((n,row)=>n+row.bytes,0);
-  while(total+extra>LIMIT && rows.length) {const row=rows.shift(); await fs.unlink(row.target); total-=row.bytes;}
+  while(total+extra>LIMIT) {const index=rows.findIndex(row=>row.r.id!==protectedId); if(index<0) throw Error('恢复快照超过 100MiB 容量，原记录已保留'); const [row]=rows.splice(index,1); await fs.unlink(row.target); total-=row.bytes;}
   return rows;
  }
  async save(r) {
@@ -91,10 +91,10 @@ class RecoveryStore {
   try { const handle=await fs.open(tmp,'wx',384); try {await handle.writeFile(JSON.stringify(r)); await handle.sync();} finally {await handle.close();} await fs.rename(tmp,dest); }
   finally {await fs.rm(tmp,{force:true});}
  }
- async capture(file, operation) {
+ async capture(file, operation, protectedId) {
   const snapshot=await state(this.repo,file);
   const r={id:randomUUID(),repo:this.key,file,createdAt:Date.now(),operation,outcome:'pending',state:snapshot,digest:digest(JSON.stringify(snapshot))};
-  await this.prune(Buffer.byteLength(JSON.stringify(r))+4096); await this.save(r); return r;
+  await this.prune(Buffer.byteLength(JSON.stringify(r))+4096,protectedId); await this.save(r); return r;
  }
  async finish(r,outcome,error) { r.outcome=outcome; if(error) r.error=String(error.message||error).slice(0,1000); await this.save(r); }
  async get(id) {
@@ -103,6 +103,7 @@ class RecoveryStore {
   if(!row) throw Error('恢复记录不存在或已过期'); return row.r;
  }
  async list() {return (await this.prune()).filter(x=>x.r.repo===this.key).reverse().map(({r})=>({id:r.id,file:r.file,createdAt:r.createdAt,operation:r.operation,outcome:r.outcome,error:r.error,exists:r.state.exists,bytes:r.state.exists?Buffer.from(r.state.data,'base64').length:0}));}
+ async consume(r) {if(r.repo!==this.key||!new RegExp('^[a-f0-9-]{36}$').test(r.id)) throw Error('无效恢复记录'); await fs.unlink(path.join(this.dir,`${this.key}-${r.id}.json`));}
  async clear() {let count=0; for(const row of await this.records()) if(row.r.repo===this.key) {await fs.unlink(row.target);count++;} return {cleared:count};}
 }
 module.exports={RecoveryStore,regularPath,state};

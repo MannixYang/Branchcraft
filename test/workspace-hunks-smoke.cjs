@@ -17,7 +17,7 @@ const fs=require('fs'),os=require('os'),path=require('path'),assert=require('nod
   await bulk('全部折叠').click();assert.equal(await page.locator('.folder-toggle[aria-expanded="true"]').count(),0);assert.equal(await page.locator(`.item[title="${file}"]`).count(),0);
   await page.fill('#search','code.txt');await bulk('全部展开').click();assert.equal(await page.locator('.folder-toggle[aria-expanded="true"]').count(),2);await page.fill('#search','');
   const folder=page.locator('.folder-toggle[data-folder="worktree:src/"]');await folder.click();assert.equal(await folder.getAttribute('aria-expanded'),'false');await folder.focus();await page.keyboard.press('Enter');assert.equal(await folder.getAttribute('aria-expanded'),'true');
-  const open=async kind=>{await page.evaluate(async({file,kind})=>{const f=state.files.find(f=>f.path===file);await selectFile(f,kind,kind+':'+file);},{file,kind});};
+  const open=async kind=>{await page.evaluate(async({file,kind})=>{const f=state.files.find(f=>f.path===file);await selectFile(f,kind,kind+':'+file);},{file,kind});await page.waitForFunction(kind=>!refreshRunning&&document.querySelector('#detailType').textContent===(kind==='staged'?'STAGED / INDEX':'WORKING TREE')&&!!document.querySelector('#detailBody .actionable-diff'),kind);};
   const action=(type,n=0)=>page.locator(`.hunk-action[data-action="${type}"][data-hunk="${n}"]`);
   console.log('已打开测试仓库');
   const idle=()=>page.waitForFunction(()=>!loading&&!document.querySelector('#modal').open);

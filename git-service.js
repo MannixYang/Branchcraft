@@ -129,7 +129,7 @@ class GitService {
  if(!this.recovery)throw Error('未启用恢复安全网');if(this.busy)throw Error('另一个操作正在执行');this.busy=true;
  try{return await this.recovery.run(async()=>{
  const r=await this.recovery.get(id);if(typeof token!=='string'||token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');
- const backup=await this.recovery.capture(r.file,'undo');
+ const backup=await this.recovery.capture(r.file,'undo',r.id);
  try{
  if(token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');
  let target=await regularPath(this.repo,r.file);
@@ -138,8 +138,11 @@ class GitService {
  const temp=path.join(path.dirname(target),'.branchcraft-'+require('node:crypto').randomUUID());
  try{await fs.writeFile(temp,Buffer.from(r.state.data,'base64'),{flag:'wx',mode:r.state.mode});if(token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');await regularPath(this.repo,r.file);await fs.rename(temp,target);}finally{await fs.rm(temp,{force:true});}
  }else{if(token!==await this.recoveryBinding(r))throw Error('文件或暂存区已变化，请重新预览');target=await regularPath(this.repo,r.file);try{await fs.unlink(target);}catch(e){if(e.code!=='ENOENT')throw e;}}
- await this.recovery.finish(backup,'success');return {message:'已恢复工作区，暂存区保持不变',backupId:backup.id};
+ await this.recovery.finish(backup,'success');
  }catch(e){await this.recovery.finish(backup,'failed',e);throw e;}
+ try{await this.recovery.consume(r);}catch(e){return {message:'已恢复工作区，但旧记录清理失败，已保留两份记录：'+e.message,backupId:backup.id,cleanupWarning:true};}
+ return {message:'已恢复工作区，旧记录已移除；恢复前备份已保留，暂存区保持不变',backupId:backup.id};
+
  });}finally{this.busy=false;}
  }
  async rollback({file,token,hunk}){

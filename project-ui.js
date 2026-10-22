@@ -10,12 +10,12 @@
   const draw=(node,depth,prefix='')=>{
    for(const [name,folder] of node.dirs){
     const path=prefix+name+'/',expanded=folderChoices.get(path)===true;
-    const row=button((expanded?'▾ ':'▸ ')+name,()=>{folderChoices.set(path,!expanded);drawTree();},'folder-row');
+    const row=button('',()=>{folderChoices.set(path,!expanded);drawTree();},'folder-row tree-row');row.append(el('span','tree-chevron',expanded?'▾':'▸'),el('span','tree-icon tree-folder'),el('span','tree-name',name),el('span','tree-count',String(folder.count)));row.title=path;
     row.type='button';row.dataset.folder=path;row.setAttribute('aria-expanded',String(expanded));
-    Object.assign(row.style,{display:'block',width:'100%',textAlign:'left',paddingLeft:(12+depth*14)+'px'});
+    row.style.paddingLeft=(10+depth*16)+'px';
     items.append(row);if(expanded)draw(folder,depth+1,path);
    }
-   for(const entry of node.files){const file=entry.path;const row=button(file.split('/').pop(),()=>open(file),'file-row'+(doc?.file===file?' selected':''));row.style.paddingLeft=(14+depth*14)+'px';row.title=file;items.append(row);}
+   for(const entry of node.files){const file=entry.path;const row=button('',()=>open(file),'file-row tree-row'+(doc?.file===file?' selected':''));row.append(el('span','tree-chevron'),el('span','tree-icon tree-file'),el('span','tree-name',file.split('/').pop()));row.style.paddingLeft=(10+depth*16)+'px';row.title=file;items.append(row);}
   };
   draw(FileTree.build(files.filter(f=>f.toLowerCase().includes(query)).map(path=>({path}))),0);items.scrollTop=top;
  }
