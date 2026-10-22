@@ -8,6 +8,14 @@ await write("$branchcraftNumber=40\r");await write("Write-Output ('STATE_'+($bra
 await page.click('#hideTerminal');assert.equal(await page.locator('#terminalPanel').isVisible(),false);await write("Write-Output ('HIDDEN_'+($branchcraftNumber+3))\r");await output('HIDDEN_43');await page.click('#toggleTerminal');assert.equal((await page.evaluate(()=>window.gitdesk.terminalOpen())).id,session.id);
 const before=await page.locator('#terminalPanel').boundingBox();const detail=await page.locator('.detail-panel').boundingBox();assert.ok(before.x>=detail.x+detail.width-2,'终端必须在右侧');await page.setViewportSize({width:1700,height:950});await page.waitForTimeout(300);await write("Write-Output ('SIZE_'+$Host.UI.RawUI.WindowSize.Width)\r");await page.waitForFunction(()=>/SIZE_\d+/.test(window.ptyOutput));
 await page.locator('.xterm-helper-textarea').focus();await page.keyboard.type("Write-Output ('KEYBOARD_'+(6*7))");await page.keyboard.press('Enter');await output('KEYBOARD_42');
+await write("Write-Output ('DESCENDER_'+ 'ggjjppqqyy')\r");await output('DESCENDER_ggjjppqqyy');
+await page.waitForFunction(()=>document.querySelector('.xterm-screen').textContent.includes('DESCENDER_ggjjppqqyy'));
+await page.locator('.xterm-helper-textarea').focus();
+const metrics=await page.evaluate(()=>{const row=[...document.querySelectorAll('.xterm-rows > div')].find(n=>n.textContent.includes('DESCENDER_ggjjppqqyy'));const style=getComputedStyle(row),span=row.querySelector('span'),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=getComputedStyle(span).font;const ink=ctx.measureText('gjpqy');return {height:row.getBoundingClientRect().height,font:parseFloat(style.fontSize),ink:ink.actualBoundingBoxAscent+ink.actualBoundingBoxDescent,cursor:!!document.querySelector('.xterm.focus .xterm-cursor-block'),blink:!!document.querySelector('.xterm-cursor-blink'),line:style.lineHeight};});
+assert.ok(metrics.height>=metrics.font*1.3,JSON.stringify(metrics));assert.ok(metrics.height>=metrics.ink+3,JSON.stringify(metrics));assert.ok(metrics.cursor,'聚焦时应有块状光标');assert.equal(metrics.blink,false,'光标持续可见');console.log('字体与行框检查',metrics);
+await page.locator('#commitMessage').focus();assert.ok(await page.locator('.xterm-cursor-outline').count(),'失焦时应有轮廓光标');await page.locator('.xterm-helper-textarea').focus();
+if(process.env.BRANCHCRAFT_SCREENSHOT)await page.locator('#terminalPanel').screenshot({path:process.env.BRANCHCRAFT_SCREENSHOT});
+
 await write('Start-Sleep -Seconds 30\r');await page.waitForTimeout(700);await page.locator('.xterm-helper-textarea').focus();await page.keyboard.press('Control+c');await page.waitForTimeout(500);await write("Write-Output ('CANCEL_'+(6*7))\r");await output('CANCEL_42');
 // Check that xterm actually rendered the output, not only the IPC stream.
 await page.waitForFunction(()=>document.querySelector('.xterm-screen').textContent.includes('CANCEL_42'));
