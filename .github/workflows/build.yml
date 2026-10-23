@@ -75,8 +75,8 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
-            release/*.dmg
-            release/*.zip
+            release/*-mac-${{ matrix.arch }}.dmg
+            release/*-mac-${{ matrix.arch }}.zip
       - name: 上传测试截图
         if: always()
         uses: actions/upload-artifact@v4
@@ -106,10 +106,11 @@ jobs:
         shell: bash
         run: |
           cd release-assets
+          ls -lh
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-win-x64-setup.exe"
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-win-x64-portable.exe"
-          test -f "Branchcraft-${GITHUB_REF_NAME#v}-linux-x64.AppImage"
-          test -f "Branchcraft-${GITHUB_REF_NAME#v}-linux-x64.deb"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-linux-x86_64.AppImage"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-linux-amd64.deb"
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-x64.dmg"
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-x64.zip"
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-arm64.dmg"
