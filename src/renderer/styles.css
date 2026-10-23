@@ -47,7 +47,7 @@
 .splitter-right{right:0}.splitter-left{left:0}
 .panel-splitter:hover,.panel-splitter:focus-visible{background:#57b7a466;outline:none}
 .panel-resizing,.panel-resizing *{cursor:col-resize!important;user-select:none!important}
-.workspace .list-panel{min-width:0;max-width:none;overflow:hidden}
+.workspace .list-panel{min-width:0;max-width:none;overflow:hidden;padding-right:8px}
 .workspace .terminal-panel{min-width:0;max-width:none;resize:none}
 .editor-left{min-width:0}
 .editor-diff{min-width:0}

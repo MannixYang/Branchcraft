@@ -30,6 +30,7 @@ const {execFileSync:run}=require('child_process');
   await expanded('src/',false);assert.equal(await page.locator('.file-row').count(),1);
   assert.equal(await page.locator('.folder-row[aria-expanded="true"]').count(),0);
   const box=await src.boundingBox(),list=await page.locator('#items').boundingBox();assert(box.width>list.width*.9,'folder button must fill the row');
+  assert(await src.evaluate(node=>{const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.right-8,r.top+r.height/2));}),"folder right edge must not be covered by the resize handle");
   await src.click({position:{x:box.width-8,y:box.height/2}});await expanded('src/',true);await expanded('src/nested/',false);
   await src.focus();await page.keyboard.press('Space');await expanded('src/',false);
   await page.getByRole('button',{name:'全部展开',exact:true}).click();await expanded('src/nested/',true);
