@@ -26,9 +26,19 @@ test('tracked recovery subtree is excluded from polling diffs',async t=>{
  git(repo,'add','.');await w.check();assert.equal(events,0);await w.close();
 });
 
-test('linked worktree watches worktree git dir and common refs',async t=>{
- const root=await setup(t),linked=root+'-linked';git(root,'worktree','add','-b','linked',linked);t.after(()=>fs.rm(linked,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
- const watched=[];let events=0;const w=new RepositoryWatcher(linked,{onChange:()=>events++,interval:100000,watch(dir,options){watched.push(dir);assert.equal(options.recursive,true);return {on(){},close(){}};}});t.after(()=>w.close());await w.ready;
- assert.ok(watched.includes(path.resolve(linked)));assert.ok(watched.includes(path.join(root,'.git')));assert.ok(watched.some(dir=>dir.includes(path.join('.git','worktrees'))));
+for(const alias of [false,true])test('linked worktree watches worktree git dir and common refs'+(alias?' through a directory alias':''),async t=>{
+ const original=await setup(t),linked=original+'-linked';let root=original;
+ if(alias){root=original+'-alias';await fs.symlink(original,root,process.platform==='win32'?'junction':'dir');t.after(()=>fs.unlink(root));}
+ git(root,'worktree','add','-b','linked',linked);t.after(()=>fs.rm(linked,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
+ const watched=[],optionsSeen=[];let events=0;const w=new RepositoryWatcher(linked,{onChange:()=>events++,interval:100000,watch(dir,options){watched.push(dir);optionsSeen.push(options);return {on(){},close(){}};}});t.after(()=>w.close());await w.ready;
+ // Git may expand temporary-directory aliases; compare filesystem identities.
+ const expected=[linked,path.join(root,'.git'),path.join(root,'.git','worktrees',path.basename(linked))];
+ const actualReal=await Promise.all(watched.map(dir=>fs.realpath(dir)));
+ const expectedReal=await Promise.all(expected.map(dir=>fs.realpath(dir)));
+ const diagnostic=JSON.stringify({watched,expected,actualReal,expectedReal},null,2);
+ assert.deepEqual([...actualReal].sort(),[...expectedReal].sort(),diagnostic);
+ assert.equal(optionsSeen.length,expected.length,'all expected directories must be watched');
+ assert.ok(optionsSeen.every(options=>options.recursive===true),'all watcher registrations must be recursive');
+ if(alias)assert.notEqual(path.resolve(root,'.git'),await fs.realpath(path.join(root,'.git')),'fixture must exercise distinct path spellings');
  git(root,'branch','external-common-ref');await w.check();assert.equal(events,1);await fs.writeFile(path.join(linked,'a'),'linked edit');await w.check();assert.equal(events,2);await w.close();
 });
