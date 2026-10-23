@@ -1,6 +1,7 @@
 const {app,BrowserWindow,ipcMain,dialog,shell,Menu}=require('electron');
 const {GitService}=require('./git-service');const fs=require('node:fs/promises');const path=require('node:path');
 const {ProjectService}=require('./project-service');
+const {ConfigService}=require('./config-service');
 const {TerminalService}=require('./terminal-service');
 const {RepositoryWatcher}=require('./repo-watcher');
 let watcher,openGeneration=0,watchEpoch=0,watchClosing=Promise.resolve();
@@ -34,6 +35,9 @@ app.whenReady().then(async()=>{
  register('terminalOpen',()=>{const r=repo();if(!terminalSession)terminalSession=terminal.open(r.repo);return terminalSession;});
  register('terminalWrite',(id,data)=>terminal.write(id,data));register('terminalResize',(id,cols,rows)=>terminal.resize(id,cols,rows));register('terminalClose',id=>{terminal.close(id);terminalSession=null;});
  for(const method of ['tree','read','save','diff'])register('project'+method[0].toUpperCase()+method.slice(1),arg=>{repo();return project[method](arg);});
+ register('configList',scope=>new ConfigService(repo().repo).list(scope));
+ register('configSet',input=>new ConfigService(repo().repo).set(input));
+ register('configUnset',input=>new ConfigService(repo().repo).unset(input));
  register('commitPreview',()=>repo().commitPreview());
  for(const method of ['recoveryList','recoveryClear','recoveryPreview','recoveryRestore'])register(method,arg=>repo()[method](arg));
  register('rollbackPreview',file=>repo().rollbackPreview(file));register('rollback',args=>repo().rollback(args));register('snapshot',()=>repo().snapshot());register('diff',args=>repo().diff(args));register('action',(action,args)=>repo().mutate(action,args));register('conflict',file=>repo().conflict(file));register('resolve',args=>repo().resolve(args));register('stashHash',ref=>repo().stashHash(ref));register('reveal',()=>shell.openPath(repo().repo));

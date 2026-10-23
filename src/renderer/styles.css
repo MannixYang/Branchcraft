@@ -51,3 +51,6 @@
 .workspace .terminal-panel{min-width:0;max-width:none;resize:none}
 .editor-left{min-width:0}
 .editor-diff{min-width:0}
+
+/* Git configuration: isolated modal, no workspace editor teardown. */
+.config-dialog{width:min(880px,90vw);max-height:88vh;overflow:auto}.config-controls{display:flex;gap:12px;align-items:center;margin:16px 0}.config-grid{display:grid;grid-template-columns:minmax(180px,1fr) minmax(260px,1.5fr);gap:22px}.config-rows{overflow:auto;max-height:390px;border:1px solid var(--border,#303a40);border-radius:6px}.config-rows button{display:block;width:100%;text-align:left;overflow-wrap:anywhere;white-space:normal;border-radius:0}.config-grid form label{display:block;margin-bottom:12px}.config-grid input:not([type=checkbox]),.config-grid textarea,.config-grid select{display:block;width:100%;box-sizing:border-box;margin-top:6px}.config-warning{font-size:12px;line-height:1.6;color:#ddba78}.config-grid textarea{resize:vertical;min-height:90px}#configStatus{min-height:20px;overflow-wrap:anywhere}#configReason{color:#ddba78}
