@@ -213,3 +213,61 @@ test('literal conflict save stages only the reviewed file and requires token',as
  assert.equal(await fs.readFile(path.join(s.repo,'a.txt'),'utf8'),'neighbor a\n');
  assert.equal(await fs.readFile(path.join(s.repo,'b.txt'),'utf8'),'neighbor b\n');
 });
+
+test('history only includes HEAD ancestors, not unmerged local, remote, tag or stash tips',async t=>{
+ const s=await repo(t);await commit(s);const base=git(s.repo,'rev-parse','HEAD').trim();
+ git(s.repo,'switch','-c','unmerged');await commit(s,'feature.txt','feature\n');
+ const feature=git(s.repo,'rev-parse','HEAD').trim();
+ git(s.repo,'update-ref','refs/remotes/origin/unmerged',feature);git(s.repo,'tag','unmerged-tag',feature);
+ git(s.repo,'switch','main');await write(s,'a.txt','stashed\n');git(s.repo,'stash','push','-m','hidden stash');
+ const snap=await s.snapshot();
+ assert.deepEqual(snap.commits.map(c=>c.hash),[base]);
+ assert.ok(snap.branches.some(b=>b.name==='unmerged'));
+ assert.ok(snap.branches.some(b=>b.name==='origin/unmerged'&&b.remote));assert.equal(snap.stashes.length,1);
+});
+
+test('history includes merged side ancestry and both merge parents, not only first-parent',async t=>{
+ const s=await repo(t);await commit(s);const base=git(s.repo,'rev-parse','HEAD').trim();
+ git(s.repo,'switch','-c','feature');await commit(s,'feature.txt','feature one\n');
+ const side1=git(s.repo,'rev-parse','HEAD').trim();await commit(s,'feature.txt','feature two\n');
+ const side2=git(s.repo,'rev-parse','HEAD').trim();git(s.repo,'switch','main');
+ await commit(s,'main.txt','main\n');const main=git(s.repo,'rev-parse','HEAD').trim();
+ assert.deepEqual((await s.snapshot()).commits.map(c=>c.hash),[main,base]);
+ git(s.repo,'merge','--no-ff','-m','merge feature','feature');
+ const merge=git(s.repo,'rev-parse','HEAD').trim();const snap=await s.snapshot();
+ assert.equal(snap.commits[0].hash,merge);assert.deepEqual(snap.commits[0].parents,[main,side2]);
+ assert.deepEqual(new Set(snap.commits.map(c=>c.hash)),new Set([merge,main,base,side1,side2]));
+ assert.deepEqual(snap.commits.map(c=>c.hash),git(s.repo,'log','HEAD','--date-order','-180','--format=%H').trim().split('\n'));
+});
+
+test('detached HEAD history includes its unreferenced tip and excludes branch descendants',async t=>{
+ const s=await repo(t);await commit(s);const base=git(s.repo,'rev-parse','HEAD').trim();
+ await commit(s,'main.txt','later main\n');const main=git(s.repo,'rev-parse','HEAD').trim();
+ git(s.repo,'switch','--detach',base);await commit(s,'detached.txt','detached\n');
+ const detached=git(s.repo,'rev-parse','HEAD').trim();const snap=await s.snapshot();
+ assert.deepEqual(snap.commits.map(c=>c.hash),[detached,base]);
+ assert.ok(!snap.commits.some(c=>c.hash===main));assert.ok(snap.branch.includes('HEAD'));
+ assert.ok(snap.branches.every(b=>!b.current));
+});
+
+test('unborn HEAD returns empty history despite existing branch and tag refs',async t=>{
+ const s=await repo(t);await commit(s);git(s.repo,'tag','existing-tag');
+ git(s.repo,'switch','--orphan','unborn');await write(s,'new.txt','untracked\n');
+ const original=s.git.bind(s);const calls=[];s.git=async(args,...rest)=>{calls.push(args);return original(args,...rest);};
+ const snap=await s.snapshot();assert.equal(snap.branch,'unborn');assert.deepEqual(snap.commits,[]);
+ assert.ok(snap.branches.some(b=>b.name==='main'));assert.ok(snap.files.some(f=>f.path==='new.txt'));
+ assert.ok(!calls.some(args=>args[0]==='log'));
+});
+
+test('empty repository snapshot keeps files and branch while history stays empty',async t=>{
+ const s=await repo(t);let snap=await s.snapshot();
+ assert.equal(snap.branch,'main');assert.deepEqual(snap.commits,[]);assert.deepEqual(snap.branches,[]);
+ await write(s,'new.txt','new\n');git(s.repo,'add','new.txt');snap=await s.snapshot();
+ assert.deepEqual(snap.commits,[]);assert.equal(snap.files[0].x,'A');
+});
+
+test('history failures on an existing HEAD are not silently reported as empty history',async t=>{
+ const s=await repo(t);await commit(s);const original=s.git.bind(s);
+ s.git=async(args,...rest)=>{if(args[0]==='log')throw Error('history read failed');return original(args,...rest);};
+ await assert.rejects(s.snapshot(),{message:'history read failed'});
+});
