@@ -50,7 +50,7 @@ class GitService {
  case 'fetch':return await this.git(['fetch','--all']);
  case 'pull':return await this.git(['pull','--ff-only']);
  case 'push':return await this.git(['push']);
- case 'merge':if(!p.name||p.name.startsWith('-'))throw Error('无效分支名');return await this.git(['merge','--no-edit',p.name]);
+ case 'merge':return await this.mergeConfirmed(p);
  case 'abortMerge':return await this.git(['merge','--abort']);
  case 'stashSave':return await this.git(['stash','push',...(p.includeUntracked?['--include-untracked']:[]),'-m',p.message?.trim()||'Branchcraft 保存的修改']);
  case 'stashApply':case 'stashPop':case 'stashDrop':this.checkStash(p.ref);if(p.hash){const actual=(await this.git(['rev-parse',p.ref])).trim();if(actual!==p.hash)throw Error('Stash 列表已变化，请刷新后重试');}return await this.git(['stash',({stashApply:'apply',stashPop:'pop',stashDrop:'drop'})[action],p.ref]);
@@ -167,6 +167,33 @@ class GitService {
  try{return await (this.recovery?this.recovery.run(perform):perform());}finally{this.busy=false;}
  }
  async stashHash(ref){this.checkStash(ref);return (await this.git(['rev-parse',ref])).trim();}
+ async mergeState(name){
+ if(typeof name!=='string'||!name||name.startsWith('-')||name.includes('\0')||name.length>1024)throw Error('无效分支名');
+ let ref;for(const prefix of ['refs/heads/','refs/remotes/']){const candidate=prefix+name;const hash=(await this.git(['show-ref','--verify','--hash',candidate],true)).trim();if(/^[a-f0-9]{40,64}$/.test(hash)){ref=candidate;break;}}
+ if(!ref)throw Error('分支不存在，请刷新');
+ const head=(await this.git(['rev-parse','--verify','HEAD^{commit}'])).trim();
+ const branch=(await this.git(['symbolic-ref','-q','HEAD'],true)).trim();
+ const target=(await this.git(['rev-parse','--verify',ref+'^{commit}'])).trim();
+ const status=await this.git(['status','--porcelain=v1','-z','--untracked-files=all']);
+ if(status)throw Error('合并预览要求干净工作区和暂存区，请先提交或储藏修改（包括未跟踪文件）');
+ const mergeHead=(await this.git(['rev-parse','--verify','-q','MERGE_HEAD'],true)).trim();if(mergeHead)throw Error('请先完成或中止当前合并');
+ const base=(await this.git(['merge-base',head,target])).trim();
+ return {repo:this.repo,name,ref,head,branch,target,base};
+ }
+ async mergePreview(name){
+ const before=await this.mergeState(name);
+ const [diff,summary]=await Promise.all([this.git(['diff','--no-ext-diff','--no-textconv','--find-renames',before.base,before.target,'--']),this.git(['diff','--stat','--no-ext-diff','--no-textconv',before.base,before.target,'--'])]);
+ if(JSON.stringify(before)!==JSON.stringify(await this.mergeState(name)))throw Error('分支已变化，请重新预览');
+ const token=randomUUID();this.mergePreviews??=new Map();this.mergePreviews.set(token,before);while(this.mergePreviews.size>20)this.mergePreviews.delete(this.mergePreviews.keys().next().value);
+ return {...before,diff,summary,token};
+ }
+ async mergeConfirmed({name,token}){
+ const preview=this.mergePreviews?.get(token);if(!preview||preview.name!==name)throw Error('缺少合并预览或预览已过期，请重新预览');
+ if(JSON.stringify(preview)!==JSON.stringify(await this.mergeState(name)))throw Error('HEAD 或目标分支已变化，请重新预览合并');
+ this.mergePreviews.delete(token);
+ // Merge the reviewed immutable commit, never a moving branch reference.
+ return this.git(['merge','--no-edit','--',preview.target]);
+ }
  async conflictState(file){
  const index=await this.git(['ls-files','--unmerged','--stage','-z','--',':(literal)'+file]);
  const target=await regularPath(this.repo,file);const stat=await fs.lstat(target);

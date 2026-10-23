@@ -40,7 +40,7 @@ app.whenReady().then(async()=>{
  register('configUnset',input=>new ConfigService(repo().repo).unset(input));
  register('commitPreview',()=>repo().commitPreview());
  for(const method of ['recoveryList','recoveryClear','recoveryPreview','recoveryRestore'])register(method,arg=>repo()[method](arg));
- register('rollbackPreview',file=>repo().rollbackPreview(file));register('rollback',args=>repo().rollback(args));register('snapshot',()=>repo().snapshot());register('diff',args=>repo().diff(args));register('action',(action,args)=>repo().mutate(action,args));register('conflict',file=>repo().conflict(file));register('resolve',args=>repo().resolve(args));register('stashHash',ref=>repo().stashHash(ref));register('reveal',()=>shell.openPath(repo().repo));
+ register('rollbackPreview',file=>repo().rollbackPreview(file));register('rollback',args=>repo().rollback(args));register('snapshot',()=>repo().snapshot());register('diff',args=>repo().diff(args));register('action',(action,args)=>repo().mutate(action,args));register('mergePreview',name=>repo().mergePreview(name));register('conflict',file=>repo().conflict(file));register('resolve',args=>repo().resolve(args));register('stashHash',ref=>repo().stashHash(ref));register('reveal',()=>shell.openPath(repo().repo));
  await createWindow();
  app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow();});
 });
