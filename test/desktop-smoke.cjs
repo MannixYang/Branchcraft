@@ -17,10 +17,24 @@ await page.locator('[data-view="stash"]').click();await page.locator('#items .it
 if(process.platform==='darwin'){
  const roles=await app.evaluate(({Menu})=>Menu.getApplicationMenu().items.flatMap(item=>(item.submenu?.items||[]).map(x=>x.role)));
  for(const role of ['copy','paste','undo'])if(!roles.includes(role))throw Error('macOS 原生编辑菜单缺少 '+role);
- const reopened=app.waitForEvent('window');
- await app.evaluate(({app,BrowserWindow})=>{BrowserWindow.getAllWindows()[0].close();if(BrowserWindow.getAllWindows().length!==0)throw Error('窗口未关闭');app.emit('activate');});
- const next=await reopened;next.on('pageerror',e=>errors.push(e.message));await next.waitForFunction(()=>!!window.gitdesk);
+ // close() requests native window closure; on macOS it need not finish synchronously.
+ // Observe both close notifications before checking the zero-window state or activating.
+ await Promise.all([
+  page.waitForEvent('close'),
+  app.evaluate(async({BrowserWindow})=>{
+   const win=BrowserWindow.getAllWindows()[0];
+   await new Promise(resolve=>{win.once('closed',resolve);win.close();});
+   if(BrowserWindow.getAllWindows().length!==0)throw Error('窗口未关闭');
+  })
+ ]);
+ // Attach rejection handlers immediately so a failed evaluate is not masked by an
+ // unhandled window waiter when finally closes the application.
+ const [next]=await Promise.all([
+  app.waitForEvent('window'),
+  app.evaluate(({app})=>{app.emit('activate');})
+ ]);
+ next.on('pageerror',e=>errors.push(e.message));await next.waitForFunction(()=>!!window.gitdesk);
  await next.locator('#statusText').waitFor();console.log('macOS 原生菜单、关闭最后窗口及 activate 重建窗口通过。');
 }
 if(errors.length)throw Error(errors.join('\n'));console.log('真实 Electron 界面测试通过：启动、选择仓库、工作区 Diff、暂存、提交、提交历史、Stash 修改详情；无页面异常。');
-}finally{if(app)await app.close();fs.rmSync(root,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+}catch(error){console.error('桌面测试失败（应用清理前）：',error);throw error;}finally{if(app)await app.close();fs.rmSync(root,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
