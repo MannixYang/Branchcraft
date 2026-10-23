@@ -40,3 +40,14 @@
 .editor-gutter{flex:none;overflow:hidden;user-select:none;pointer-events:none;background:#10161d;border-right:1px solid #29313b;min-width:48px}
 .editor-line-numbers{box-sizing:border-box;margin:0;padding:16px 10px;text-align:right;color:#6c8293;font:13px/22px Consolas,monospace;white-space:pre;will-change:transform}
 #diffBase{max-width:260px}
+
+/* Pointer and keyboard accessible panel boundaries. */
+.resizable-panel{position:relative}
+.panel-splitter{position:absolute;z-index:8;top:0;bottom:0;width:8px;cursor:col-resize;touch-action:none;background:transparent}
+.splitter-right{right:0}.splitter-left{left:0}
+.panel-splitter:hover,.panel-splitter:focus-visible{background:#57b7a466;outline:none}
+.panel-resizing,.panel-resizing *{cursor:col-resize!important;user-select:none!important}
+.workspace .list-panel{min-width:0;max-width:none;overflow:hidden}
+.workspace .terminal-panel{min-width:0;max-width:none;resize:none}
+.editor-left{min-width:0}
+.editor-diff{min-width:0}
