@@ -2,7 +2,7 @@
   "name": "branchcraft",
   "version": "1.0.0",
   "description": "本地 Git 可视化桌面工作台",
-  "main": "main.js",
+  "main": "src/main/index.js",
   "author": "Branchcraft",
   "license": "MIT",
   "scripts": {
@@ -28,21 +28,8 @@
       "output": "release"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "git-service.js",
-      "index.html",
-      "renderer.js",
-      "styles.css",
-      "package.json",
-      "platform.js",
-      "file-tree.js",
-      "project-service.js",
-      "project-ui.js",
-      "terminal-service.js",
-      "terminal-ui.js",
-      "recovery-store.js",
-      "repo-watcher.js"
+      "src/**/*",
+      "package.json"
     ],
     "win": {
       "target": [

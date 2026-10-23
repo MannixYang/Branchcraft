@@ -13,13 +13,13 @@ const store=()=>path.join(app.getPath('userData'),'repositories.json');
 async function openRepo(folder){const generation=++openGeneration;const candidate=new GitService(folder);const root=(await candidate.git(['rev-parse','--show-toplevel'])).trim();const next=new GitService(root,{recoveryDir:path.join(app.getPath('userData'),'recovery')});const snapshot=await next.snapshot();if(generation!==openGeneration)throw Error('仓库打开请求已被替换');await stopWatcher();if(generation!==openGeneration)throw Error('仓库打开请求已被替换');resetTerminal();service=next;project=new ProjectService(root);startWatcher();recent=[root,...recent.filter(x=>x!==root)].slice(0,12);await fs.writeFile(store(),JSON.stringify(recent));return snapshot;}
 function register(name,fn){ipcMain.handle(name,async(event,...args)=>{if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame)throw Error('不可信来源');try{return {ok:true,data:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});}
 async function createWindow(){
- win=new BrowserWindow({width:1480,height:940,minWidth:1080,minHeight:700,backgroundColor:'#101417',title:'Branchcraft · Git 工作台',webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});win.setMenuBarVisibility(false);
+ win=new BrowserWindow({width:1480,height:940,minWidth:1080,minHeight:700,backgroundColor:'#101417',title:'Branchcraft · Git 工作台',webPreferences:{preload:path.join(__dirname,'../preload/index.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});win.setMenuBarVisibility(false);
  win.webContents.setWindowOpenHandler(({url})=>{if(url==='https://deerflow.tech/')shell.openExternal(url);return {action:'deny'};});win.webContents.on('will-navigate',event=>event.preventDefault());
  win.webContents.on('render-process-gone',()=>{stopWatcher();resetTerminal();});
  win.webContents.on('did-start-loading',()=>{stopWatcher();resetTerminal();});
  win.webContents.on('did-finish-load',()=>startWatcher());
  win.on('closed',()=>{openGeneration++;stopWatcher();if(terminal)terminal.dispose();terminalSession=null;win=null;});
- await win.loadFile(path.join(__dirname,'index.html'));
+ await win.loadFile(path.join(__dirname,'../renderer/index.html'));
 }
 app.whenReady().then(async()=>{
  if(process.platform==='darwin')Menu.setApplicationMenu(Menu.buildFromTemplate([

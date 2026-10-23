@@ -2,7 +2,7 @@
 
 中文（默认） | [English](README.en.md)
 
-基于 Electron 与原生 JavaScript 的本地 Git 可视化桌面工作台，直接调用本机 Git，面向 Windows、Linux 与 macOS。当前开发分支为 `feature/cross-platform`。
+基于 Electron 与原生 JavaScript 的本地 Git 可视化桌面工作台，直接调用本机 Git，面向 Windows、Linux 与 macOS。开发主线为 `main`。
 
 ## 功能
 
@@ -19,7 +19,7 @@
 需要 **Node.js 24、npm 11、Git**（Windows 使用 Git for Windows），并能在终端执行 `git --version`。
 
 ```powershell
-git clone --branch feature/cross-platform https://github.com/MannixYang/Branchcraft.git
+git clone --branch main https://github.com/MannixYang/Branchcraft.git
 cd Branchcraft
 npm ci
 npm start
@@ -35,6 +35,53 @@ npm start
 - 发布包自带 Electron，无需另装 Node.js，但**仍需要系统 Git**。portable 仅表示免安装，设置/恢复数据仍写入系统用户目录。
 - `npm run pack` 只更新当前平台的**目录包**（Windows 为 `release/win-unpacked`），**不会更新已有 portable EXE 或安装器**。
 - `npm run dist` 生成当前平台发行文件；显式目标为 `npm run dist:win`、`npm run dist:linux`、`npm run dist:mac`，输出位于 `release/`。macOS 构建应在 macOS 上进行。
+
+## 源码目录与资源放置
+
+```text
+Branchcraft/
+├─ src/
+│  ├─ main/
+│  │  ├─ index.js
+│  │  ├─ git-service.js
+│  │  ├─ project-service.js
+│  │  ├─ terminal-service.js
+│  │  ├─ repo-watcher.js
+│  │  ├─ recovery-store.js
+│  │  └─ platform.js
+│  ├─ preload/
+│  │  └─ index.js
+│  ├─ renderer/
+│  │  ├─ index.html
+│  │  ├─ renderer.js
+│  │  ├─ project-ui.js
+│  │  ├─ terminal-ui.js
+│  │  └─ styles.css
+│  └─ shared/
+│     └─ file-tree.js
+├─ scripts/
+├─ test/
+├─ .github/
+├─ Dockerfile.validation
+└─ package.json
+```
+
+- `src/main/`：Electron 生命周期、IPC 路由与 Git、项目文件、PTY、监听、恢复和平台服务；入口 `index.js` 由原根 `main.js` 迁入。
+- `src/preload/index.js`：由原 `preload.js` 迁入，只暴露受限 API 与事件订阅。
+- `src/renderer/`：HTML、CSS 与界面逻辑；新增页面、界面脚本及样式放在此处。
+- `src/shared/file-tree.js`：浏览器与 Node 测试共用的 UMD 纯逻辑；新增共享模块须兼容两种环境，不引入 Electron/DOM 副作用。
+- `scripts/`、`test/`、根 `Dockerfile.validation` 与 `.github/` 保持原位置；新增构建脚本、测试和工作流分别放入对应目录。
+- `package.json.main` 为 `src/main/index.js`，`build.files` 为 `src/**/*` 与 `package.json`；依赖仍由打包工具处理。
+- 相对路径以引用文件为准，不是项目根或当前工作目录：主进程从自身 `__dirname` 定位 `../preload/index.js`、`../renderer/index.html`；HTML 的本地 CSS/脚本在同目录，共享脚本为 `../shared/file-tree.js`，依赖资源为 `../../node_modules/...`；`test/` 引入共享模块使用 `../src/shared/file-tree.js`。CSS 的 `url(...)` 相对样式文件。移动后同步检查引用、测试与打包路径。
+- 根目录没有受控图标/字体资源，不创建空 `assets/`。确需新静态资源时再放入 `src/renderer/assets/`，同步引用、许可和打包检查。旧日志、截图、`release/`、`node_modules/` 是忽略产物，不作为迁移或删除对象。
+
+## v1.0.0 预发布流程
+
+开发主线为 `main`。以下描述自动发布规则；实际构建与发布状态请查看 GitHub Actions 和 Releases，不应将配置存在视为验证通过。
+
+推送与 `package.json` 版本一致的 `v1.0.0` 标签后，`.github/workflows/build.yml` 要求 Windows x64、Linux x64、macOS x64、macOS arm64 四个平台的单元测试、源码桌面测试、打包及打包版桌面测试全部通过，才自动发布 GitHub **Pre-release**，设置 `make_latest: false`（不设 Latest）。分支构建本身不发布。
+
+附件为 **8 个发行包 + `SHA256SUMS.txt`**：Windows 安装器/portable EXE、Linux AppImage/deb、macOS x64 DMG/ZIP、macOS arm64 DMG/ZIP。流程先建草稿、上传全部附件，再公开预发布；请核对校验和。当前包未签名，macOS 未经 Apple 公证，系统可能提示风险；先在测试仓库体验。目录包 smoke 不等同于安装器或 portable 启动器验收。
 
 ## 系统与实测范围
 

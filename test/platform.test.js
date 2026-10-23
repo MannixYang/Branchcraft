@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {gitEnvironment,gitExecutable}=require('../platform');
+const {gitEnvironment,gitExecutable}=require('../src/main/platform');
 test('平台 Git 环境保留原有配置且无 shell 调用',()=>{
  const original={PATH:'/custom',SSH_AUTH_SOCK:'agent'};
  const env=gitEnvironment(original,'darwin');

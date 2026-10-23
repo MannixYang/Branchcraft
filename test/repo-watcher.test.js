@@ -1,6 +1,6 @@
  'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {execFileSync}=require('node:child_process');const {RepositoryWatcher}=require('../repo-watcher');
+const {execFileSync}=require('node:child_process');const {RepositoryWatcher}=require('../src/main/repo-watcher');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const git=(repo,...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',windowsHide:true});
 async function setup(t){const repo=await fs.mkdtemp(path.join(os.tmpdir(),'watch-test-'));t.after(()=>fs.rm(repo,{recursive:true,force:true,maxRetries:10,retryDelay:100}));git(repo,'init','-b','main');git(repo,'config','user.name','Test');git(repo,'config','user.email','t@t');git(repo,'config','core.autocrlf','false');await fs.writeFile(path.join(repo,'a'),'base');git(repo,'add','.');git(repo,'commit','-m','base');return repo;}

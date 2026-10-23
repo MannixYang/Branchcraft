@@ -2,7 +2,7 @@
 
 [中文（默认）](README.md) | English
 
-A local Git desktop workbench built with Electron and vanilla JavaScript. It invokes system Git and targets Windows, Linux and macOS. The current development branch is `feature/cross-platform`.
+A local Git desktop workbench built with Electron and vanilla JavaScript. It invokes system Git and targets Windows, Linux and macOS. The development mainline is `main`.
 
 ## Features
 
@@ -19,7 +19,7 @@ A local Git desktop workbench built with Electron and vanilla JavaScript. It inv
 Use **Node.js 24, npm 11 and Git** (Git for Windows on Windows). `git --version` must work in your terminal.
 
 ```powershell
-git clone --branch feature/cross-platform https://github.com/MannixYang/Branchcraft.git
+git clone --branch main https://github.com/MannixYang/Branchcraft.git
 cd Branchcraft
 npm ci
 npm start
@@ -35,6 +35,53 @@ These commands work in PowerShell; use `npm.cmd` if execution policy blocks `npm
 - Release packages bundle Electron and need no separate Node.js installation, but **still require system Git**. Portable means no app installation; settings/recovery data still use the system user-data directory.
 - `npm run pack` updates only the current platform's **unpacked directory** (`release/win-unpacked` on Windows). It **does not update an existing portable EXE or installer**.
 - `npm run dist` generates current-platform distributables; explicit commands are `npm run dist:win`, `npm run dist:linux` and `npm run dist:mac`. Output goes to `release/`. Build macOS releases on macOS.
+
+## Source layout and resource placement
+
+```text
+Branchcraft/
+├─ src/
+│  ├─ main/
+│  │  ├─ index.js
+│  │  ├─ git-service.js
+│  │  ├─ project-service.js
+│  │  ├─ terminal-service.js
+│  │  ├─ repo-watcher.js
+│  │  ├─ recovery-store.js
+│  │  └─ platform.js
+│  ├─ preload/
+│  │  └─ index.js
+│  ├─ renderer/
+│  │  ├─ index.html
+│  │  ├─ renderer.js
+│  │  ├─ project-ui.js
+│  │  ├─ terminal-ui.js
+│  │  └─ styles.css
+│  └─ shared/
+│     └─ file-tree.js
+├─ scripts/
+├─ test/
+├─ .github/
+├─ Dockerfile.validation
+└─ package.json
+```
+
+- `src/main/`: Electron lifecycle, IPC routing and Git, project-file, PTY, watcher, recovery and platform services. Entry `index.js` replaces the former root `main.js`.
+- `src/preload/index.js`: moved from `preload.js`; exposes only restricted APIs and event subscriptions.
+- `src/renderer/`: HTML, CSS and UI logic. Put new pages, UI scripts and styles here.
+- `src/shared/file-tree.js`: UMD pure logic shared by browsers and Node tests. Keep shared modules compatible with both environments, without Electron/DOM side effects.
+- Keep `scripts/`, `test/`, root `Dockerfile.validation` and `.github/` in place; put new build scripts, tests and workflows in their respective directories.
+- `package.json.main` is `src/main/index.js`; `build.files` contains `src/**/*` and `package.json`. The packager still handles dependencies.
+- Resolve relative references from the referring file, not the repository root or working directory: main uses its `__dirname` with `../preload/index.js` and `../renderer/index.html`; HTML uses same-directory CSS/scripts, `../shared/file-tree.js` and `../../node_modules/...` for dependency resources. Tests in `test/` import the shared module via `../src/shared/file-tree.js`. CSS `url(...)` is relative to the stylesheet. Check references, tests and packaging paths after moving files.
+- There are no version-controlled root icon/font resources; do not create an empty `assets/`. If needed, place new static resources in `src/renderer/assets/` and update references, licensing and packaging checks. Old logs, screenshots, `release/` and `node_modules/` are ignored outputs, not migration or deletion targets.
+
+## v1.0.0 pre-release workflow
+
+The development mainline is `main`. The following describes automated release rules; check GitHub Actions and Releases for actual status. Configuration alone does not demonstrate successful validation.
+
+Pushing a `v1.0.0` tag matching `package.json` triggers `.github/workflows/build.yml`. Unit tests, source desktop tests, packaging and packaged desktop tests must pass on all four combinations: Windows x64, Linux x64, macOS x64 and macOS arm64. Only then is a GitHub **Pre-release** published automatically, with `make_latest: false` (not Latest). Branch builds do not publish releases.
+
+Expect **8 release packages plus `SHA256SUMS.txt`**: Windows setup/portable EXE, Linux AppImage/deb, macOS x64 DMG/ZIP and macOS arm64 DMG/ZIP. The workflow creates a draft, uploads every asset, then publishes the pre-release; verify checksums. Packages are currently unsigned and macOS builds are not Apple-notarized, so OS warnings are possible; try disposable repositories first. Unpacked desktop smoke tests do not validate installers or portable launchers.
 
 ## Platforms and validation scope
 

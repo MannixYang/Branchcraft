@@ -1,4 +1,4 @@
-name: 三平台测试与打包
+name: 三平台测试、打包与预发布
 on:
   push:
     branches: [main, master, feature/cross-platform]
@@ -35,6 +35,10 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: 校验发布标签与应用版本一致
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: node -e "const expected='v'+require('./package.json').version; if(process.env.GITHUB_REF_NAME!==expected) throw new Error('发布标签必须为 '+expected);"
       - name: 安装 Linux 图形运行库
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libatk-bridge2.0-0 fonts-noto-cjk xz-utils binutils
@@ -74,3 +78,61 @@ jobs:
           name: screenshots-${{ matrix.target }}-${{ matrix.arch }}
           path: screenshots/**/*.png
           if-no-files-found: ignore
+
+  release:
+    name: 发布 GitHub 预发布版本
+    needs: desktop
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: 下载本次四平台安装包
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Branchcraft-*
+          path: release-assets
+          merge-multiple: true
+      - name: 校验安装包完整性并生成校验和
+        shell: bash
+        run: |
+          cd release-assets
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-win-x64-setup.exe"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-win-x64-portable.exe"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-linux-x64.AppImage"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-linux-x64.deb"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-x64.dmg"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-x64.zip"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-arm64.dmg"
+          test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-arm64.zip"
+          sha256sum -- *.exe *.AppImage *.deb *.dmg *.zip > SHA256SUMS.txt
+      - name: 创建草稿、上传全部附件后公开为预发布
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { owner, repo } = context.repo;
+            const tag = process.env.GITHUB_REF_NAME;
+            const dir = 'release-assets';
+            const files = fs.readdirSync(dir).sort();
+            if (files.length !== 9) throw new Error('预期 8 个安装包和 1 个校验和文件，实际为 ' + files.length);
+            // 不覆盖已有版本；附件未全部上传时保留草稿，避免公开不完整版本。
+            const { data: release } = await github.rest.repos.createRelease({
+              owner, repo, tag_name: tag, target_commitish: context.sha,
+              name: `Branchcraft ${tag}（预发布）`, draft: true, prerelease: true,
+              generate_release_notes: true,
+              body: '跨平台预发布版本：Windows x64、Linux x64、macOS Intel x64 与 Apple Silicon arm64。\n\n四平台单元测试、源码桌面测试及打包版桌面测试通过后发布。附件包含 SHA256SUMS.txt，请按需校验。\n\n注意：当前安装包未进行代码签名，macOS 未进行 Apple 公证，系统可能显示安全提示。本版本为预发布，建议先在测试仓库中体验。'
+            });
+            for (const file of files) {
+              const data = fs.readFileSync(path.join(dir, file));
+              await github.rest.repos.uploadReleaseAsset({ owner, repo, release_id: release.id, name: file, data });
+              core.info(`已上传：${file}`);
+            }
+            const { data: published } = await github.rest.repos.updateRelease({
+              owner, repo, release_id: release.id, draft: false, prerelease: true, make_latest: 'false'
+            });
+            await core.summary.addHeading('预发布完成').addLink(tag, published.html_url).write();

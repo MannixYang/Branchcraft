@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert').strict;
 const fs = require('node:fs');
 const path = require('node:path');
-const { TerminalService } = require(path.join(__dirname, '..', 'terminal-service'));
+const { TerminalService } = require('../src/main/terminal-service');
 const cwd = path.resolve(__dirname, '..');
 function fixture() {
   const calls = [], children = [], data = [], exits = [];

@@ -1,8 +1,8 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {execFileSync}=require('node:child_process');
-const {GitService}=require('..'+String.fromCharCode(47)+'git-service');
-const {RecoveryStore,regularPath}=require('..'+String.fromCharCode(47)+'recovery-store');
+const {GitService}=require('../src/main/git-service');
+const {RecoveryStore,regularPath}=require('../src/main/recovery-store');
 const git=(r,...a)=>execFileSync('git',a,{cwd:r,encoding:'utf8',windowsHide:true});
 async function setup(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'recovery-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));const repo=path.join(root,'repo'),dir=path.join(root,'userdata');await fs.mkdir(repo);git(repo,'init','-b','main');git(repo,'config','user.email','a@b');git(repo,'config','user.name','Test');git(repo,'config','core.autocrlf','false');await fs.writeFile(path.join(repo,'a'),'base\n');git(repo,'add','.');git(repo,'commit','-m','base');return {root,repo,dir,s:new GitService(repo,{recoveryDir:dir})};}
 async function rollback(s,file='a',hunk){const p=await s.rollbackPreview(file);await s.rollback({file,token:p.token,hunk});return (await s.recoveryList())[0];}

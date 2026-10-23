@@ -5,7 +5,7 @@ const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
 const {execFileSync}=require('node:child_process');
-const {GitService}=require('../git-service');
+const {GitService}=require('../src/main/git-service');
 const git=(dir,...args)=>execFileSync('git',['-c','core.quotepath=false',...args],{cwd:dir,encoding:'utf8',windowsHide:true});
 async function repo(t){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'branchcraft-test-'));t.after(()=>fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:200}));git(dir,'init','-b','main');git(dir,'config','user.name','测试用户');git(dir,'config','user.email','test@example.invalid');git(dir,'config','core.autocrlf','false');return new GitService(dir);}
 async function write(s,file,text){await fs.mkdir(path.dirname(path.join(s.repo,file)),{recursive:true});await fs.writeFile(path.join(s.repo,file),text);}
