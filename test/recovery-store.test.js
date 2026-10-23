@@ -53,3 +53,27 @@ test('global capacity spans repositories and accepts exact boundary',async t=>{
 
 test('restore backup failure preserves source; cleanup failure keeps successful safety backup',async t=>{const {repo,s}=await setup(t);await fs.writeFile(path.join(repo,'a'),'edit\n');const r=await rollback(s);const capture=s.recovery.capture;s.recovery.capture=async()=>{throw Error('disk full');};await assert.rejects(undo(s,r.id),/disk full/);assert.equal(await fs.readFile(path.join(repo,'a'),'utf8'),'base\n');assert.equal((await s.recoveryList())[0].id,r.id);s.recovery.capture=capture;s.recovery.consume=async()=>{throw Error('cleanup denied');};const result=await undo(s,r.id);assert.equal(result.cleanupWarning,true);assert.equal(await fs.readFile(path.join(repo,'a'),'utf8'),'edit\n');const rows=await s.recoveryList();assert.equal(rows.length,2);assert.equal(rows.find(x=>x.id===result.backupId).outcome,'success');assert.ok(rows.some(x=>x.id===r.id));});
 test('capacity pruning cannot evict protected restore source',async t=>{const {repo,dir,s}=await setup(t);await fs.writeFile(path.join(repo,'a'),'edit\n');const r=await rollback(s);const store=new RecoveryStore(repo,dir);await store.run(async()=>{await assert.rejects(store.prune(100*1024*1024,r.id),/原记录已保留/);assert.equal((await store.get(r.id)).id,r.id);});});
+
+
+test('lock stays exclusive before owner publication and preserves fresh empty locks',async t=>{
+ const {repo,dir}=await setup(t);await fs.mkdir(dir);const lock=path.join(dir,'.lock');
+ const first=new RecoveryStore(repo,dir),second=new RecoveryStore(repo,dir);
+ await fs.mkdir(lock);const before=await fs.stat(lock);
+ await assert.rejects(second.acquire(),/正在使用/);
+ assert.equal((await fs.stat(lock)).ino,before.ino);assert.deepEqual(await fs.readdir(lock),[]);
+ await fs.rmdir(lock);
+ const mkdir=fs.mkdir;let checked=false,acquired;
+ fs.mkdir=async (...args)=>{const result=await mkdir(...args);if(args[0]===lock&&!checked){checked=true;await assert.rejects(second.acquire(),/正在使用/);}return result;};
+ try{acquired=await first.acquire();assert.equal(checked,true);assert.equal(JSON.parse(await fs.readFile(acquired.owner,'utf8')).pid,process.pid);}
+ finally{fs.mkdir=mkdir;if(acquired){await fs.unlink(acquired.owner);await fs.rmdir(acquired.dir);}}
+});
+
+test('owner publication failure cleans its partial lock and permits retry',async t=>{
+ const {repo,dir}=await setup(t);await fs.mkdir(dir);const store=new RecoveryStore(repo,dir),lock=path.join(dir,'.lock');
+ const writeFile=fs.writeFile;
+ fs.writeFile=async (...args)=>{await writeFile(...args);throw Object.assign(Error('owner write failed'),{code:'EIO'});};
+ try{await assert.rejects(store.acquire(),/owner write failed/);}
+ finally{fs.writeFile=writeFile;}
+ await assert.rejects(fs.stat(lock),{code:'ENOENT'});assert.deepEqual(await fs.readdir(dir),[]);
+ const acquired=await store.acquire();await fs.unlink(acquired.owner);await fs.rmdir(acquired.dir);
+});

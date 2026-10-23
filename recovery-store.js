@@ -33,12 +33,12 @@ class RecoveryStore {
   const root = await fs.realpath(this.repo); this.key = digest(process.platform === 'win32' ? root.toLowerCase() : root);
  }
  async acquire(){
- const lock=path.join(this.dir,'.lock'),name='owner-'+randomUUID()+'.json',candidate=lock+'.candidate-'+randomUUID();
- await fs.mkdir(candidate);let acquired=false;
- try{
- await fs.writeFile(path.join(candidate,name),JSON.stringify({pid:process.pid}),{flag:'wx'});
+ const lock=path.join(this.dir,'.lock'),name='owner-'+randomUUID()+'.json';
  for(let attempt=0;attempt<8;attempt++){
- try{await fs.rename(candidate,lock);acquired=true;return {dir:lock,owner:path.join(lock,name)};}catch(e){
+ // mkdir is exclusive on every platform; POSIX rename can replace an empty lock.
+ let acquired=false;
+ try{await fs.mkdir(lock);acquired=true;}catch(e){
+ if(e.code!=='EEXIST')throw e;
  let st;try{st=await fs.lstat(lock);}catch(err){if(err.code==='ENOENT')continue;throw err;}
  if(!st.isDirectory()||st.isSymbolicLink())throw Error('无效恢复存储锁');
  const entries=await fs.readdir(lock);let owner,ownerFile;
@@ -53,9 +53,18 @@ class RecoveryStore {
  if(ownerFile)try{await fs.unlink(ownerFile);}catch(err){if(err.code==='ENOENT')continue;throw err;}
  try{await fs.rmdir(lock);}catch(err){if(!['ENOENT','ENOTEMPTY','EEXIST'].includes(err.code))throw err;}
  }
+ if(acquired){
+ const owner=path.join(lock,name);
+ try{await fs.writeFile(owner,JSON.stringify({pid:process.pid}),{flag:'wx'});}
+ catch(e){
+ // Remove only our own partial owner and empty directory, never another owner.
+ try{await fs.unlink(owner);}catch(err){if(err.code!=='ENOENT')throw err;}
+ await fs.rmdir(lock);throw e;
+ }
+ return {dir:lock,owner};
+ }
  }
  throw Error('恢复存储锁竞争，请重试');
- }finally{if(!acquired)await fs.rm(candidate,{recursive:true,force:true});}
  }
  async run(fn) {
  const previous=queues.get(this.dir)||Promise.resolve();let release;
