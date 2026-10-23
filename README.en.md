@@ -6,13 +6,27 @@ A local Git desktop workbench built with Electron and vanilla JavaScript. It inv
 
 ## Features
 
-- **Project files**: browse tracked and non-ignored untracked files; edit UTF-8 text and compare it with HEAD or the index. Ctrl+S saves only to the working tree, without staging.
+- **Project files**: browse tracked and non-ignored untracked files; edit UTF-8 text with line numbers and optionally compare the working-tree file with HEAD, a local/remote branch, or the index. Ctrl+S saves only to the working tree, without staging.
 - **Workspace and commits**: folder-grouped staged, unstaged, conflicted and untracked changes; stage/unstage files or all changes, with hunk operations for supported text. Review diffs before committing; message drafts are stored locally per repository.
 - **History and branches**: the latest 180 commits, parent graph, labels and patches; create/switch local branches, explicitly create tracking branches from remote branches, merge and abort merges.
 - **Remotes and Stash**: fetch, fast-forward pull and ordinary push; stash lists/patches, save, apply, pop and confirmed deletion. Untracked files are included by default, ignored files are not. Conflicted applications retain the stash; original staging is not guaranteed (`--index` is not used).
 - **Conflicts**: inspect base/current/incoming text, edit a resolution, save and stage it.
 - **Workflow**: automatic external-change refresh plus F5/manual refresh; file/hunk rollback of unstaged changes, with a limited local recovery safety net.
 - **Persistent terminal**: a right-side PTY retains shell, directory and process state, supporting input, Ctrl+C and resizing. Hiding preserves the session; switching repositories, reloading or closing the window cleans it up.
+
+## Screenshots
+
+Captured from the actual Electron app running on Windows with a privacy-safe demo repository, not design mockups.
+
+### Workspace: file tree and colored Diff
+
+![Workspace file tree and colored Diff](docs/screenshots/workspace.png)
+
+### Project files: line numbers and branch-based Diff
+
+![Project editor with line numbers and branch comparison](docs/screenshots/project-editor.png)
+
+The preview/editor displays line numbers. Diff is hidden by default; enable it to choose HEAD (default), a local branch, a remote-tracking branch, or the index. It compares the **on-disk working-tree file** against the selected branch tip, not unsaved edits. Remote-tracking refs reflect the last Fetch. Hiding Diff also hides the base selector. Ctrl+S saves without staging.
 
 ## Quick start: source development
 

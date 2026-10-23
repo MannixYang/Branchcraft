@@ -52,6 +52,12 @@ jobs:
       - name: Windows 与 macOS 真实桌面测试
         if: runner.os != 'Linux'
         run: npm run test:desktop
+      - name: Linux 项目编辑器与文件树回归
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node test/editor-smoke.cjs && xvfb-run -a node test/project-tree-smoke.cjs
+      - name: Windows 与 macOS 项目编辑器与文件树回归
+        if: runner.os != 'Linux'
+        run: node test/editor-smoke.cjs && node test/project-tree-smoke.cjs
       - name: 原生平台打包
         run: node scripts/build.cjs --${{ matrix.target }} --${{ matrix.arch }} --publish never
       - name: Linux 打包版本桌面测试

@@ -69,13 +69,36 @@ class ProjectService {
    return {file:current.file,text,token:hash(raw)};
   }finally{try{if(temporary)await fs.rm(temporary,{force:true});}finally{this.saving=false;}}
  }
- async diff({file,base}){
-  if(!['HEAD','index'].includes(base))throw Error('base 只能是 HEAD 或 index');
-  const current=await this.load(file);let oid;
+ // Resolve literal branch names; never interpret user input as a revision.
+ async diffCommit(base){
+  if(typeof base!=='string'||!base||base.includes('\0')||base.startsWith('-'))throw Error('无效 base：只能是 HEAD、index 或已存在的本地/远程分支');
+  if(base==='index')return null;
   if(base==='HEAD'){
-   const head=await this.run(['rev-parse','--verify','--quiet','HEAD'],[1]);
-   if(head.code===0){const rows=(await this.git(['ls-tree','-z','HEAD','--',`:(literal)${current.file}`])).split('\0').filter(Boolean);
-    if(rows.length){const match=/^(100644|100755) blob ([a-f0-9]+)\t/.exec(rows[0]);if(!match)throw Error('HEAD 基准不是普通文件');oid=match[2];}}
+   const head=await this.run(['rev-parse','--verify','--quiet','--end-of-options','HEAD^{commit}'],[1]);
+   if(head.code===0)return head.raw.toString('utf8').trim();
+   // A missing local symbolic target is unborn; other Git errors must surface.
+   const symbolic=await this.run(['symbolic-ref','--quiet','HEAD'],[1]);
+   const ref=symbolic.raw.toString('utf8').trim();
+   if(symbolic.code===0&&ref.startsWith('refs/heads/')){
+    const exists=await this.run(['show-ref','--verify','--quiet',ref],[1]);
+    if(exists.code===1)return null;
+   }
+   throw Error('无法解析 HEAD commit');
+  }
+  const refs=(await this.git(['for-each-ref','--format=%(refname)%00%(objectname)%00%(objecttype)','refs/heads/','refs/remotes/'])).split('\n').filter(Boolean).map(row=>row.trim().split('\0'));
+  const candidates=base.startsWith('refs/')?[base]:[`refs/heads/${base}`,`refs/remotes/${base}`];
+  for(const name of candidates){
+   const ref=refs.find(row=>row[0]===name);
+   if(ref){if(ref[2]!=='commit'||!/^[a-f0-9]{40,64}$/.test(ref[1]))throw Error('无效 base：分支未指向 commit');return ref[1];}
+  }
+  throw Error('无效 base：本地/远程分支不存在');
+ }
+ async diff({file,base='HEAD'}){
+  const commit=await this.diffCommit(base);
+  const current=await this.load(file);let oid;
+  if(base!=='index'){
+   if(commit){const rows=(await this.git(['ls-tree','-z',commit,'--',`:(literal)${current.file}`])).split('\0').filter(Boolean);
+    if(rows.length){const match=/^(100644|100755) blob ([a-f0-9]+)\t/.exec(rows[0]);if(!match)throw Error(`${base} 基准不是普通文件`);oid=match[2];}}
   }else{
    const rows=(await this.git(['ls-files','--stage','-z','--',`:(literal)${current.file}`])).split('\0').filter(Boolean);
    if(rows.length){const match=/^(100644|100755) ([a-f0-9]+) 0\t/.exec(rows[0]);if(rows.length!==1||!match)throw Error('index 基准不是已解决的普通文件');oid=match[2];}

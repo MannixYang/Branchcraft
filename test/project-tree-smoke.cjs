@@ -40,6 +40,8 @@ const {execFileSync:run}=require('child_process');
   await page.locator('.folder-row[data-folder="docs/"]').click();
   await page.click('#refresh');await page.waitForFunction(()=>!document.body.hasAttribute('aria-busy'));await expanded('docs/',false);await expanded('src/nested/',true);
   await page.locator('.file-row[title="src/nested/a.txt"]').click();
+  assert.equal(await page.locator('#diffBase').isVisible(),false);
+  await page.getByRole('button',{name:'显示 Diff',exact:true}).click();
   await page.waitForSelector('#editorDiff .diff-line.add');
   assert((await page.locator('#editorDiff .diff-line.del').textContent()).includes('-HEAD line'));
   assert((await page.locator('#editorDiff .diff-line.add').textContent()).includes(payload));

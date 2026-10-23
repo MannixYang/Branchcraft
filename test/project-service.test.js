@@ -75,7 +75,7 @@ test('diff HEAD and index select distinct baselines; diff never stages',async t=
 test('diff untracked uses empty baseline, unchanged returns empty, rejects invalid base',async t=>{
  const {put,service}=await fixture(t);await put('new 中文.txt','新文件\n');
  for(const base of ['HEAD','index'])assert.match(await service.diff({file:'new 中文.txt',base}),/\+新文件/);
- assert.equal(await service.diff({file:'tracked.txt',base:'HEAD'}),'');for(const base of [undefined,'head','HEAD~1','--help'])await assert.rejects(service.diff({file:'tracked.txt',base}),/base/);
+ assert.equal(await service.diff({file:'tracked.txt',base:'HEAD'}),'');for(const base of ['head','HEAD~1','--help'])await assert.rejects(service.diff({file:'tracked.txt',base}),/base/);
 });
 test('unborn HEAD is normal; existing index blob still used',async t=>{
  const {service}=await fixture(t,false);assert.match(await service.diff({file:'tracked.txt',base:'HEAD'}),/\+head line/);assert.equal(await service.diff({file:'tracked.txt',base:'index'}),'');
@@ -98,4 +98,40 @@ test('diff cleans temporary directories on success and Git failure',async t=>{
  service.run=(args,...rest)=>args[0]==='diff'?Promise.reject(Error('injected diff failure')):run(args,...rest);
  await assert.rejects(service.diff({file:'tracked.txt',base:'HEAD'}),/injected/);
  assert.deepEqual((await fs.readdir(os.tmpdir())).filter(x=>x.startsWith('project-diff-')).sort(),before);
+});
+
+test('diff defaults to HEAD even when index differs',async t=>{
+ const {git,put,service}=await fixture(t);await put('tracked.txt','staged line\n');git('add','--','tracked.txt');await put('tracked.txt','working line\n');
+ const implicit=await service.diff({file:'tracked.txt'});assert.match(implicit,/-head line/);assert.match(implicit,/\+working line/);assert.doesNotMatch(implicit,/-staged line/);
+ assert.match(await service.diff({file:'tracked.txt',base:undefined}),/-head line/);
+});
+test('diff local and remote branches, short and full refs, uses resolved commit oid',async t=>{
+ const {git,put,service}=await fixture(t);const original=git('rev-parse','HEAD').trim();
+ git('branch','feature/topic');await put('tracked.txt','branch line\n');git('add','--','tracked.txt');git('commit','-qm','branch baseline');
+ const branch=git('rev-parse','HEAD').trim();git('update-ref','refs/heads/feature/topic',branch);git('update-ref','refs/remotes/origin/topic',branch);
+ git('reset','--hard',original);await put('tracked.txt','working line\n');const index=git('write-tree'),head=git('rev-parse','HEAD');
+ const runGit=service.git.bind(service);const trees=[];service.git=args=>{if(args[0]==='ls-tree')trees.push(args[2]);return runGit(args);};
+ for(const base of ['feature/topic','refs/heads/feature/topic','origin/topic','refs/remotes/origin/topic']){
+  const diff=await service.diff({file:'tracked.txt',base});assert.match(diff,/-branch line/);assert.match(diff,/\+working line/);assert.doesNotMatch(diff,/-head line/);
+ }
+ assert.deepEqual(trees,[branch,branch,branch,branch]);assert.equal(git('write-tree'),index);assert.equal(git('rev-parse','HEAD'),head);
+});
+test('branch missing file is an empty baseline, not an invalid branch',async t=>{
+ const {git,put,service}=await fixture(t);git('branch','before-file');git('update-ref','refs/remotes/origin/before-file',git('rev-parse','HEAD').trim());
+ await put('later.txt','later content\n');git('add','--','later.txt');git('commit','-qm','add later');
+ for(const base of ['before-file','refs/heads/before-file','origin/before-file','refs/remotes/origin/before-file']){
+  const diff=await service.diff({file:'later.txt',base});assert.match(diff,/@@ -0,0 \+1 @@/);assert.match(diff,/\+later content/);
+ }
+});
+test('diff rejects revisions, tags, unknown refs and option injection explicitly',async t=>{
+ const {git,service}=await fixture(t);git('tag','release');const oid=git('rev-parse','HEAD').trim();
+ const runGit=service.git.bind(service),run=service.run.bind(service);const calls=[];
+ service.git=args=>{calls.push(args);return runGit(args);};service.run=(args,...rest)=>{calls.push(args);return run(args,...rest);};
+ for(const base of [null,1,{},[], '', 'missing', 'refs/heads/missing','refs/remotes/origin/missing','release','refs/tags/release',oid,'HEAD~1','HEAD^','HEAD^{tree}','HEAD:tracked.txt','HEAD@{0}','@','--help','--output=evil','feature\n--help','HEAD\0bad']){
+  await assert.rejects(service.diff({file:'tracked.txt',base}),/base/);
+ }
+ assert(calls.every(args=>args[0]==='for-each-ref'));
+});
+test('default HEAD on unborn repository has empty baseline',async t=>{
+ const {service}=await fixture(t,false);assert.match(await service.diff({file:'tracked.txt'}),/\+head line/);
 });
