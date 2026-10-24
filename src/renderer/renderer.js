@@ -1,13 +1,17 @@
 'use strict';
 const $=id=>document.getElementById(id);const api=window.gitdesk;let state=null,view='changes',selection=null,loading=false,detailSeq=0,toastTimer;const colors=['#b7ed91','#84bde7','#d6a0dd','#f1be7e','#79d7c2'];
 const collapsedFolders=new Set();
+// Later classic scripts install the editor guard. Keep early user intent until
+// all initial scripts have executed; never treat an absent guard as permission.
+const initialScriptsReady=document.readyState==='loading'?new Promise(resolve=>document.addEventListener('DOMContentLoaded',resolve,{once:true})):Promise.resolve();
+async function leaveProjectEditor(){await initialScriptsReady;if(!window.projectEditor){toast('项目编辑器初始化失败，请重新打开应用',true);return false;}return window.projectEditor.leave();}
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 function toast(text,error=false){$('toast').textContent=text;$('toast').className=error?'error':'';$('toast').style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').style.display='none',error?16000:6000);}
 async function task(fn,label='处理中…'){if(loading)return;loading=true;$('statusText').textContent=label;document.body.setAttribute('aria-busy','true');try{return await fn();}catch(e){toast(e.message,true);return null;}finally{loading=false;document.body.removeAttribute('aria-busy');$('statusText').textContent=state?'就绪 · '+state.branch:'就绪 · 请打开仓库';}}
 function modal(title,description,fields=[],confirm='确认'){if($('modal').open||loading)return Promise.resolve(null);return new Promise(resolve=>{const box=$('modalFields');box.replaceChildren();$('modalTitle').textContent=title;$('modalDescription').textContent=description;$('modalConfirm').textContent=confirm;for(const field of fields){const label=el('label','',field.label);let input;if(field.type==='select'){input=el('select');for(const option of field.options){const o=el('option','',option);o.value=option;input.append(o);}}else{input=el('input');input.type=field.type||'text';input.value=field.value||'';input.placeholder=field.placeholder||'';input.checked=!!field.checked;}input.name=field.name;input.required=!!field.required;label.append(input);box.append(label);}const dialog=$('modal');const finish=value=>{dialog.close();$('modalForm').onsubmit=null;$('modalCancel').onclick=null;dialog.oncancel=null;resolve(value);};$('modalForm').onsubmit=e=>{e.preventDefault();const values={};for(const field of fields){const n=$('modalForm').elements.namedItem(field.name);values[field.name]=field.type==='checkbox'?n.checked:n.value;}finish(values);};$('modalCancel').onclick=()=>finish(null);dialog.oncancel=e=>{e.preventDefault();finish(null);};dialog.showModal();box.querySelector('input,select')?.focus();});}
-async function recent(){const repos=await api.recent();$('recent').replaceChildren();for(const folder of repos.slice(0,4)){const b=el('button','',folder.split(/[\\/]/).pop());b.title=folder;b.onclick=async()=>{if(!await leaveConflict()||!await window.projectEditor?.leave())return;await task(async()=>{const s=await api.open(folder);await opened(s);},'打开仓库…');};$('recent').append(b);}}
+async function recent(){const repos=await api.recent();$('recent').replaceChildren();for(const folder of repos.slice(0,4)){const b=el('button','',folder.split(/[\\/]/).pop());b.title=folder;b.onclick=async()=>{if(!await leaveConflict()||!await leaveProjectEditor())return;await task(async()=>{const s=await api.open(folder);await opened(s);},'打开仓库…');};$('recent').append(b);}}
 async function opened(s){saveDraft();repoEpoch++;collapsedFolders.clear();$('search').value='';window.terminalPanel?.reset();window.projectEditor?.reset();detailSeq++;state=s;selection=null;loadDraft();render();resetDetail();await recent();}
-async function choose(){if(!await leaveConflict()||!await window.projectEditor?.leave())return;await task(async()=>{const s=await api.choose();if(s)await opened(s);},'选择仓库…');}
+async function choose(){if(!await leaveConflict()||!await leaveProjectEditor())return;await task(async()=>{const s=await api.choose();if(s)await opened(s);},'选择仓库…');}
 async function refresh(){
  if(!state)return;if($('modal').open||$('reviewDialog').open||$('recoveryDialog').open){requestRefresh();return;}const epoch=repoEpoch,repo=state.repo,ticket=++refreshTicket;
  const next=await api.snapshot();if(epoch!==repoEpoch||ticket!==refreshTicket||next.repo!==repo)return;
@@ -21,25 +25,25 @@ async function refresh(){
  else if(view==='stash'){const st=state.stashes.find(s=>s.ref===key);if(st)await selectStash(st);else{selection=null;resetDetail();}}
  if(epoch===repoEpoch&&selection===key){$('detailBody').scrollTop=top;$('detailBody').scrollLeft=left;}
 }
-async function act(action,args={},success='操作完成'){if(!await leaveConflict()||!await window.projectEditor?.leave())return;if(!state){toast('请先打开仓库',true);return;}return await task(async()=>{let error;let result;try{result=await api.action(action,args);}catch(e){error=e;}await refresh();selection=null;resetDetail();if(error)throw error;toast(success+(result?'\n'+result.trim():''));return true;},'正在执行 '+action+'…');}
+async function act(action,args={},success='操作完成'){if(!await leaveConflict()||!await leaveProjectEditor())return;if(!state){toast('请先打开仓库',true);return;}return await task(async()=>{let error;let result;try{result=await api.action(action,args);}catch(e){error=e;}await refresh();selection=null;resetDetail();if(error)throw error;toast(success+(result?'\n'+result.trim():''));return true;},'正在执行 '+action+'…');}
 function button(text,fn,cls=''){const b=el('button',cls,text);b.onclick=fn;return b;}
 function branchList(){for(const [id,remote] of [['branches',false],['remoteBranches',true]]){$(id).replaceChildren();const branches=state.branches.filter(b=>b.remote===remote&&!b.name.endsWith('/HEAD'));for(const branch of branches){const b=button((branch.current?'● ':'⑂ ')+branch.name,async()=>{const options=await modal(remote?'远程分支':'分支操作',remote?'从远程分支建立本地跟踪分支，或将其合并到当前分支。':'切换分支会改变工作区；未提交修改可能阻止操作。',[{name:'operation',label:'操作',type:'select',options:remote?['合并到当前分支','创建本地跟踪分支']:['切换到此分支','合并到当前分支']}]);if(!options)return;if(options.operation==='合并到当前分支')await showMergePreview(branch.name);else if(options.operation==='创建本地跟踪分支')await act('track',{name:branch.name},'已切换分支');else await act('switch',{name:branch.name},'已切换分支');},'branch'+(branch.current?' current':''));b.title=branch.name+(branch.upstream?' → '+branch.upstream:'');$(id).append(b);}}}
 function render(){if(!state)return;const name=state.repo.split(/[\\/]/).pop();$('repoName').textContent=name;$('breadcrumb').textContent=name;$('repoPath').textContent=state.repo;$('currentBranch').textContent='⑂ '+state.branch;$('changesCount').textContent=state.files.length;$('historyCount').textContent=state.commits.length;$('stashCount').textContent=state.stashes.length;$('sync').textContent=state.counts?state.counts.split(/\s+/).map((n,i)=>(i?'↓ ':'↑ ')+n).join('  '):'无上游分支';$('mergeBanner').classList.toggle('hidden',!state.merging);$('stagedCount').textContent=state.files.filter(f=>f.x!==' '&&f.x!=='?'&&!f.conflict).length+' 个已暂存文件';branchList();renderList();}
-async function setView(v){if(!await leaveConflict()||!await window.projectEditor?.leave())return;view=v;selection=null;$('search').value='';document.querySelectorAll('[data-view]').forEach(n=>n.classList.toggle('active',n.dataset.view===v));const titles={project:['项目文件','直接编辑工作区 · 保存不会自动暂存。','项目文件'],changes:['工作区','每一次修改，都值得清晰掌握。','工作区'],history:['提交历史','沿着分支，读懂代码的来路。','提交历史'],stash:['Stash 储藏室','暂存未完成的修改，让思路自在切换。','Stash 储藏室']};$('viewTitle').replaceChildren(document.createTextNode(titles[v][0]),el('span','accent','.'));$('viewSubtitle').textContent=titles[v][1];$('listTitle').textContent=titles[v][2];$('commitBox').classList.toggle('hidden',v!=='changes');renderList();resetDetail();}
+async function setView(v){if(!await leaveConflict()||!await leaveProjectEditor())return;view=v;selection=null;$('search').value='';document.querySelectorAll('[data-view]').forEach(n=>n.classList.toggle('active',n.dataset.view===v));const titles={project:['项目文件','直接编辑工作区 · 保存不会自动暂存。','项目文件'],changes:['工作区','每一次修改，都值得清晰掌握。','工作区'],history:['提交历史','沿着分支，读懂代码的来路。','提交历史'],stash:['Stash 储藏室','暂存未完成的修改，让思路自在切换。','Stash 储藏室']};$('viewTitle').replaceChildren(document.createTextNode(titles[v][0]),el('span','accent','.'));$('viewSubtitle').textContent=titles[v][1];$('listTitle').textContent=titles[v][2];$('commitBox').classList.toggle('hidden',v!=='changes');renderList();resetDetail();}
 function resetDetail(){detailSeq++;if(view==='project'){window.projectEditor?.show();return;}$('detailType').textContent='CHANGE INSPECTOR';$('detailTitle').textContent=view==='stash'?'Stash 修改详情':view==='history'?'提交详情':'修改检查器';$('detailActions').replaceChildren();const d=el('div','empty');d.append(el('div','empty-icon',view==='stash'?'▣':'⑂'),el('h2','',state?'选择一项，查看完整细节。':'为下一次提交，理清思路。'),el('p','',state?'从左侧选择文件、提交或 Stash。\n所有内容直接读取自你的本地 Git 仓库。':'打开一个本地 Git 仓库，开始管理代码。'));if(!state)d.append(button('打开仓库 ↗',choose,'primary'));$('detailBody').replaceChildren(d);}
 function renderList(){const items=$('items');const top=items.scrollTop;drawList();items.scrollTop=top;}
 function workspaceFolders(expand){
  if(expand)collapsedFolders.clear();else for(const f of state.files){const kinds=f.conflict?['conflict']:[...((f.y!==' '||f.x==='?')?['worktree']:[]),...((f.x!==' '&&f.x!=='?')?['staged']:[])];const parts=f.path.split('/');parts.pop();for(const kind of kinds)for(let i=1;i<=parts.length;i++)collapsedFolders.add(kind+':'+parts.slice(0,i).join('/')+'/');}renderList();
 }
 async function restoreAll(){
- if(loading||!state||!await leaveConflict()||!await window.projectEditor?.leave())return;
+ if(loading||!state||!await leaveConflict()||!await leaveProjectEditor())return;
  const epoch=repoEpoch;
  const preview=await task(()=>api.rollbackAllPreview(),'正在预览受影响文件…');
  if(!preview||epoch!==repoEpoch)return;
  if(!preview.files.length){toast('没有可恢复的已跟踪文件');return;}
  const description='以下 '+preview.files.length+' 个文件将恢复到暂存区版本。保留已暂存内容、未跟踪和忽略文件。未暂存修改将被丢弃；本地恢复备份有期限且不替代独立备份。\n\n'+preview.files.map(f=>JSON.stringify(f)).join('\n');
  if(!await modal('恢复全部未暂存修改',description,[],'确认丢弃并恢复')||epoch!==repoEpoch)return;
- if(!await leaveConflict()||!await window.projectEditor?.leave()||epoch!==repoEpoch)return;
+ if(!await leaveConflict()||!await leaveProjectEditor()||epoch!==repoEpoch)return;
  await task(async()=>{
  let result,operationError,refreshError;
  try{result=await api.rollbackAll({token:preview.token,confirmation:preview.confirmation});}catch(error){operationError=error;}
@@ -106,7 +110,7 @@ async function leaveConflict(){
 }
 window.addEventListener('beforeunload',e=>{if(conflictSaving||conflictDrafts.size){e.preventDefault();e.returnValue='';toast('存在未保存的冲突结果，请先保存或确认放弃。',true);}});
 async function showMergePreview(name){
- if(!await leaveConflict()||!await window.projectEditor?.leave())return;
+ if(!await leaveConflict()||!await leaveProjectEditor())return;
  await task(async()=>{
  const epoch=repoEpoch,repo=state.repo;const p=await api.mergePreview(name);if(epoch!==repoEpoch||repo!==state?.repo)return;
  const seq=++detailSeq;selection=null;$('detailTitle').textContent=name+' → '+state.branch;$('detailType').textContent='MERGE REVIEW';
