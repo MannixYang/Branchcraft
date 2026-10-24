@@ -47,7 +47,11 @@
 .splitter-right{right:0}.splitter-left{left:0}
 .panel-splitter:hover,.panel-splitter:focus-visible{background:#57b7a466;outline:none}
 .panel-resizing,.panel-resizing *{cursor:col-resize!important;user-select:none!important}
-.workspace .list-panel{min-width:0;max-width:none;overflow:hidden;padding-right:8px}
+/* Preserve a real file viewport when wrapped actions and the commit editor exceed
+   the available height. The outer panel scrolls instead of collapsing #items. */
+.workspace .list-panel{min-width:0;max-width:none;overflow-x:hidden;overflow-y:auto;padding-right:8px}
+.list-panel>.panel-top,.list-panel>.search-wrap,.list-panel>.list-actions,.list-panel>.commit-box{flex-shrink:0}
+.list-panel>.items{flex:1 0 96px;min-height:96px}
 .workspace .terminal-panel{min-width:0;max-width:none;resize:none}
 .editor-left{min-width:0}
 .editor-diff{min-width:0}

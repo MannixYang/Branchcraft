@@ -7,13 +7,40 @@ const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',windowsHi
 git('init','-b','main');git('config','user.name','界面测试');git('config','user.email','ui@example.test');git('config','core.autocrlf','false');fs.writeFileSync(path.join(repo,'hello.txt'),'first line\n');git('add','.');git('commit','-m','初始提交');fs.writeFileSync(path.join(repo,'hello.txt'),'first line\nstashed work\n');git('stash','push','-m','界面测试储藏');fs.writeFileSync(path.join(repo,'hello.txt'),'first line\nworking change\n');
 app=await electron.launch({executablePath:process.env.BRANCHCRAFT_EXE||require('electron'),args:[...(process.env.BRANCHCRAFT_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[]),...(process.env.BRANCHCRAFT_EXE?[]:[path.resolve(__dirname,'..')]),'--user-data-dir='+path.join(root,'profile')],timeout:30000});const page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));await page.waitForFunction(()=>!!window.gitdesk);await page.locator('#statusText').waitFor();
 await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},repo);
-await page.locator('#openRepo').click();await page.waitForFunction(()=>document.querySelector('#repoName').textContent==='演示仓库');// Exercise real pointer interaction at the minimum supported window size.
-const originalSize=await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];const size=win.getSize();win.setSize(1080,700);return size;});
-await page.locator('#items .item').first().click();await page.waitForFunction(()=>document.querySelector('#detailBody').textContent.includes('working change'));await app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(...size),originalSize);
+await page.locator('#openRepo').click();await page.waitForFunction(()=>document.querySelector('#repoName').textContent==='演示仓库');// Regress the zero-height file viewport using real clicks, never force or DOM events.
+async function checkCompactLayout(expected,commitEditor=false){
+ const original=await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];const state={size:win.getSize(),zoom:win.webContents.getZoomFactor()};win.setSize(1080,700);return state;});
+ try{
+  for(const zoom of [1,1.25,1.5,1.75]){
+   await app.evaluate(({BrowserWindow},z)=>BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(z),zoom);
+   for(const narrow of [false,true]){
+    const splitter=page.locator('.list-panel > .panel-splitter');
+    if(narrow)await splitter.press('Home');else await splitter.dblclick();
+    if(commitEditor)await page.locator('#commitMessage').evaluate((node,tall)=>{node.style.height=tall?'320px':'';},narrow);
+    await page.waitForFunction(()=>document.querySelector('#items').getBoundingClientRect().height>=95);
+    await page.locator('#items .item').first().click();
+    await page.waitForFunction(text=>document.querySelector('#detailBody').textContent.includes(text),expected);
+    const hit=await page.locator('#items .item').first().evaluate(node=>{const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});
+    if(!hit)throw Error(`文件行中心被遮挡：zoom=${zoom}, narrow=${narrow}`);
+    if(commitEditor){
+     // Both the wrapped actions and enlarged editor must remain reachable by pointer.
+     await page.locator('#listActions button:enabled').first().click({trial:true});
+     await page.locator('#commitMessage').click();
+    }
+   }
+  }
+ }finally{
+  if(commitEditor)await page.locator('#commitMessage').evaluate(node=>{node.style.height='';});
+  await app.evaluate(({BrowserWindow},state)=>{const win=BrowserWindow.getAllWindows()[0];win.webContents.setZoomFactor(state.zoom);win.setSize(...state.size);},original);
+  await page.locator('.list-panel > .panel-splitter').dblclick();
+ }
+ console.log('紧凑布局真实点击通过：'+expected+'，4 档缩放 × 2 档分栏宽度');
+}
+await checkCompactLayout('working change',true);
 await page.screenshot({path:path.join(process.env.BRANCHCRAFT_OUTPUT,'Branchcraft-工作区.png')});
 await page.getByRole('button',{name:'＋ 全部暂存',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#stagedCount').textContent.startsWith('1'));await page.locator('#commitMessage').fill('通过真实界面创建提交');await page.locator('#commit').click();await page.locator('#reviewDialog').waitFor({state:'visible'});await page.locator('#reviewConfirm').click();await page.waitForFunction(()=>document.querySelector('#changesCount').textContent==='0'&&document.querySelector('#commitMessage').value==='');
-await page.locator('[data-view="history"]').click();await page.locator('#items .item').first().click();await page.waitForFunction(()=>document.querySelector('#detailBody').textContent.includes('working change'));await page.screenshot({path:path.join(process.env.BRANCHCRAFT_OUTPUT,'Branchcraft-提交历史.png')});
-await page.locator('[data-view="stash"]').click();await page.locator('#items .item').first().click();await page.waitForFunction(()=>document.querySelector('#detailBody').textContent.includes('stashed work'));await page.screenshot({path:path.join(process.env.BRANCHCRAFT_OUTPUT,'Branchcraft-Stash.png')});
+await page.locator('[data-view="history"]').click();await checkCompactLayout('working change');await page.locator('#items .item').first().click();await page.waitForFunction(()=>document.querySelector('#detailBody').textContent.includes('working change'));await page.screenshot({path:path.join(process.env.BRANCHCRAFT_OUTPUT,'Branchcraft-提交历史.png')});
+await page.locator('[data-view="stash"]').click();await checkCompactLayout('stashed work');await page.locator('#items .item').first().click();await page.waitForFunction(()=>document.querySelector('#detailBody').textContent.includes('stashed work'));await page.screenshot({path:path.join(process.env.BRANCHCRAFT_OUTPUT,'Branchcraft-Stash.png')});
 if(process.platform==='darwin'){
  const roles=await app.evaluate(({Menu})=>Menu.getApplicationMenu().items.flatMap(item=>(item.submenu?.items||[]).map(x=>x.role)));
  for(const role of ['copy','paste','undo'])if(!roles.includes(role))throw Error('macOS 原生编辑菜单缺少 '+role);
