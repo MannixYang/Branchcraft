@@ -66,12 +66,13 @@ class RecoveryStore {
  }
  throw Error('恢复存储锁竞争，请重试');
  }
- async run(fn) {
+ async run(fn,{onCleanupError}={}) {
  const previous=queues.get(this.dir)||Promise.resolve();let release;
  const waiting=new Promise(r=>{release=r;});const tail=previous.catch(()=>{}).then(()=>waiting);queues.set(this.dir,tail);
- await previous.catch(()=>{});let lock;
- try{await this.init();lock=await this.acquire();return await fn();}
- finally{try{if(lock){await fs.unlink(lock.owner);await fs.rmdir(lock.dir);}}finally{release();if(queues.get(this.dir)===tail)queues.delete(this.dir);}}
+ await previous.catch(()=>{});let lock,result,failed=false;
+ try{await this.init();lock=await this.acquire();result=await fn();return result;}
+ catch(error){failed=true;throw error;}
+ finally{try{if(lock){await fs.unlink(lock.owner);await fs.rmdir(lock.dir);}}catch(error){if(!failed){if(onCleanupError)onCleanupError(error,result);else throw error;}}finally{release();if(queues.get(this.dir)===tail)queues.delete(this.dir);}}
  }
  async records() {
   const out=[];
@@ -99,6 +100,21 @@ class RecoveryStore {
   const dest=path.join(this.dir,`${r.repo}-${r.id}.json`); const tmp=path.join(this.dir,`${randomUUID()}.tmp`);
   try { const handle=await fs.open(tmp,'wx',384); try {await handle.writeFile(JSON.stringify(r)); await handle.sync();} finally {await handle.close();} await fs.rename(tmp,dest); }
   finally {await fs.rm(tmp,{force:true});}
+ }
+ async captureMany(files, operation) {
+  // Reserve the entire batch before saving any member: pruning per file could
+  // evict an earlier member of the same operation before worktree restoration.
+  const records=[]; let bytes=0;
+  for(const file of files){
+   const snapshot=await state(this.repo,file);
+   const r={id:randomUUID(),repo:this.key,file,createdAt:Date.now(),operation,outcome:'pending',state:snapshot,digest:digest(JSON.stringify(snapshot))};
+   bytes+=Buffer.byteLength(JSON.stringify(r))+4096;
+   if(bytes>LIMIT)throw Error('批量恢复快照超过 100MiB 容量，未丢弃修改');
+   records.push(r);
+  }
+  await this.prune(bytes);
+  for(const r of records)await this.save(r);
+  return records;
  }
  async capture(file, operation, protectedId) {
   const snapshot=await state(this.repo,file);

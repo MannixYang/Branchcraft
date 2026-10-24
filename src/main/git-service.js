@@ -146,6 +146,52 @@ class GitService {
 
  });}finally{this.busy=false;}
  }
+ async rollbackAllState(){
+ const snapshot=await this.snapshot();
+ if(snapshot.files.some(f=>f.conflict))throw Error('存在冲突，请先解决冲突后再恢复全部');
+ const files=snapshot.files.filter(f=>f.x!=='?'&&f.y!==' ');
+ if(files.length>500)throw Error('超过500个文件，请分批恢复');
+ const entries=[];
+ for(const f of files){
+ const index=await this.git(['ls-files','--stage','-z','--',':(literal)'+f.path]);
+ if(!/^100(644|755) [a-f0-9]+ 0\t/.test(index)||index.split('\0').filter(Boolean).length!==1)throw Error('仅支持暂存区中的普通文件：'+f.path);
+ await regularPath(this.repo,f.path);
+ const preview=await this.rollbackPreview(f.path);
+ entries.push({file:f.path,token:preview.token});
+ }
+ const index=await this.git(['ls-files','--stage','-z']);
+ const token=createHash('sha256').update(this.repo).update(index).update(JSON.stringify(entries)).digest('hex');
+ return {files:entries.map(e=>e.file),token};
+ }
+ async rollbackAllPreview(){
+ if(this.busy)throw Error('另一个操作正在执行');this.busy=true;
+ try{const preview=await this.rollbackAllState();
+ const confirmation=randomUUID();this.rollbackAllConfirmation={...preview,confirmation,expires:Date.now()+5*60*1000};
+ return {...preview,confirmation};}finally{this.busy=false;}
+ }
+ async rollbackAll({token,confirmation}={}){
+ if(this.busy)throw Error('另一个操作正在执行');this.busy=true;
+ const approved=this.rollbackAllConfirmation;this.rollbackAllConfirmation=null;
+ const perform=async()=>{
+ let temp,backups=[],result;
+ try{
+ if(!approved||approved.confirmation!==confirmation||approved.token!==token||approved.expires<Date.now())throw Error('确认已过期，请重新预览');
+ const check=async()=>{if((await this.rollbackAllState()).token!==token)throw Error('文件或暂存区已变化，请重新预览');};
+ await check();
+ if(!approved.files.length)return {restored:0};
+ if(this.recovery)backups=await this.recovery.captureMany(approved.files,'whole');
+ temp=await fs.mkdtemp(path.join(os.tmpdir(),'branchcraft-restore-'));
+ const spec=path.join(temp,'paths');await fs.writeFile(spec,approved.files.map(f=>':(literal)'+f+'\0').join(''));
+ await check();
+ await this.git(['restore','--worktree','--pathspec-from-file='+spec,'--pathspec-file-nul']);
+ const warnings=[];
+ for(const backup of backups){try{await this.recovery.finish(backup,'success');}catch{warnings.push('文件 '+JSON.stringify(backup.file)+' 已恢复，但备份完成状态未能写入；请检查本地恢复记录');}}
+ result={restored:approved.files.length,...(warnings.length?{warnings}:{})};return result;
+ }catch(error){for(const backup of backups){try{await this.recovery.finish(backup,'failed',error);}catch{ /* Preserve the operation error and the durable pending record. */ }}throw error;}
+ finally{if(temp)try{await fs.rm(temp,{recursive:true,force:true});}catch{if(result)(result.warnings??=[]).push('文件已恢复，但临时路径列表未能清理；请检查系统临时目录');}}
+ };
+ try{return await (this.recovery?this.recovery.run(perform,{onCleanupError:(error,result)=>{if(result)(result.warnings??=[]).push('文件已恢复，但本地恢复锁未能释放；请检查本地恢复目录');}}):perform());}finally{this.busy=false;}
+ }
  async rollback({file,token,hunk}){
  if(this.busy)throw Error('另一个操作正在执行');this.busy=true;
  const perform=async()=>{

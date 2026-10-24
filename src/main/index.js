@@ -3,6 +3,7 @@ const {GitService}=require('./git-service');const fs=require('node:fs/promises')
 const {ProjectService}=require('./project-service');
 const {ConfigService}=require('./config-service');
 const {TerminalService}=require('./terminal-service');
+const {registerTerminalClipboard}=require('./terminal-clipboard');
 const {RepositoryWatcher}=require('./repo-watcher');
 let watcher,openGeneration=0,watchEpoch=0,watchClosing=Promise.resolve();
 function stopWatcher(){watchEpoch++;const previous=watcher;watcher=null;watchClosing=watchClosing.then(()=>previous?.close()).catch(e=>console.error('关闭仓库监听失败',e));return watchClosing;}
@@ -23,6 +24,8 @@ async function createWindow(){
  await win.loadFile(path.join(__dirname,'../renderer/index.html'));
 }
 app.whenReady().then(async()=>{
+ registerTerminalClipboard({register,getWindow:()=>win});
+ for(const method of ['rollbackAllPreview','rollbackAll'])register(method,arg=>repo()[method](arg));
  if(process.platform==='darwin')Menu.setApplicationMenu(Menu.buildFromTemplate([
   {role:'appMenu'},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
   {label:'视图',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]}, {role:'windowMenu'}
