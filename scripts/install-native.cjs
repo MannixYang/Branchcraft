@@ -1,6 +1,6 @@
-const {hasPrebuild}=require('./native-policy.cjs');
+const {preparePrebuild}=require('./native-policy.cjs');
 const {spawnSync}=require('node:child_process');
-if(hasPrebuild(process.platform,process.env.npm_config_arch||process.arch)){
+if(preparePrebuild(process.platform,process.env.npm_config_arch||process.arch)){
  console.log('node-pty: using target N-API prebuild; no forced source rebuild');
 }else{
  const cli=require.resolve('electron-builder/cli.js');
