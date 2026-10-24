@@ -103,3 +103,17 @@ test('IPC captures repo across a switch; preload exports graph APIs',async()=>{
  vm.runInContext(await fs.readFile(path.join(__dirname,'..','src','preload','index.js'),'utf8'),preload);
  assert.equal(await exposed.graphLog({limit:1}),'response');assert.equal(await exposed.graphCommit({hash:'abc'}),'response');assert.deepEqual(invocations.map(a=>a[0]),['graphLog','graphCommit']);
 });
+
+// Distinct tips matter: aliases of one commit would be deduplicated by the old code.
+test('1000 distinct branch tips use a bounded command line with paging and filtering',async t=>{
+ const f=await fixture(t);await put(f,'root.txt','root\n');const root=commit(f,'root');
+ const commands=[];
+ for(let i=0;i<1000;i++)commands.push(`commit refs/remotes/origin/load-${i}\ncommitter Graph Author <graph@example.invalid> ${1704110400+i} +0000\ndata ${Buffer.byteLength('load-'+i)}\nload-${i}\nfrom ${root}\n\n`);
+ git(f.dir,['fast-import','--quiet'],commands.join('')+'done\n');
+ const before=git(f.dir,['show-ref']);
+ const first=await f.graph.graphLog({limit:300});assert.equal(first.commits.length,300);assert.equal(first.hasMore,true);assert.equal(first.branches.length,1001);
+ const all=await f.graph.graphLog({limit:2000});assert.equal(all.commits.length,1001);assert.equal(all.hasMore,false);
+ const filtered=await f.graph.graphLog({ref:'refs/remotes/origin/load-999'});assert.equal(filtered.commits.length,2);assert.equal(filtered.commits[0].subject,'load-999');
+ for(const args of f.calls.filter(a=>a[0]==='log'))assert.ok(args.join(' ').length<1000,'command length must not scale with branch count');
+ assert.equal(git(f.dir,['show-ref']),before);
+});

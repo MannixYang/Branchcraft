@@ -21,9 +21,11 @@ class GraphService {
   if(ref&&!refs.some(r=>r.ref===ref))throw Error('Expected an existing full branch ref');
   const head=(await this.git(['rev-parse','--verify','--quiet','HEAD^{commit}'],true)).trim()||null;
   const branches=refs.map(({hash,...branch})=>branch);
-  const tips=[...new Set(ref?[refs.find(r=>r.ref===ref).hash]:[...refs.map(r=>r.hash),head].filter(Boolean))];
-  if(!tips.length)return {commits:[],branches,hasMore:false,head};
-  const raw=await this.git(['log','--topo-order',`--max-count=${limit+1}`,'-z','--format=%H%x00%P%x00%an%x00%aI%x00%s',...tips,'--']);
+  if(!refs.length&&!head)return {commits:[],branches,hasMore:false,head};
+  // Let Git enumerate branch tips internally: expanding hundreds of full OIDs
+  // exceeds Windows CreateProcess limits. Do not use --all (includes tags/stash).
+  const revisions=ref?[refs.find(r=>r.ref===ref).hash]:['--branches','--remotes',...(head?[head]:[])];
+  const raw=await this.git(['log','--topo-order',`--max-count=${limit+1}`,'-z','--format=%H%x00%P%x00%an%x00%aI%x00%s',...revisions,'--']);
   const fields=raw.split('\0');if(fields.at(-1)==='')fields.pop();
   const commits=[];
   for(let i=0;i<fields.length;i+=5){const [hash,parents,author,date,subject]=fields.slice(i,i+5);commits.push({hash,parents:parents?parents.split(' '):[],author,date,subject,refs:refs.filter(r=>r.hash===hash).map(r=>r.ref)});}
