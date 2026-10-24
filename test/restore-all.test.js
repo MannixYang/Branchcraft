@@ -13,7 +13,18 @@ test('目录替换不能误删未跟踪子文件',async t=>{const {repo,s}=await
 test('备份失败或最终校验失败均不得丢弃修改',async t=>{const {repo,s,write}=await setup(t);await write('a','work\n');let p=await s.rollbackAllPreview();s.recovery.captureMany=async()=>{throw Error('模拟备份失败');};await assert.rejects(s.rollbackAll(p),/模拟备份失败/);assert.equal(await fs.readFile(path.join(repo,'a'),'utf8'),'work\n');s.recovery.captureMany=async()=>{await write('a','changed during backup\n');return [];};p=await s.rollbackAllPreview();await assert.rejects(s.rollbackAll(p),/已变化/);assert.equal(await fs.readFile(path.join(repo,'a'),'utf8'),'changed during backup\n');});
 test('预览互斥并在异常后释放 busy',async t=>{const {s}=await setup(t);s.busy=true;await assert.rejects(s.rollbackAllPreview(),/另一个/);s.busy=false;s.rollbackAllState=async()=>{assert.equal(s.busy,true);throw Error('preview error');};await assert.rejects(s.rollbackAllPreview(),/preview error/);assert.equal(s.busy,false);});
 test('批量备份一次预留容量，不逐文件剪枝',async t=>{const {s,write}=await setup(t);await write('a','work a');await write('deleted','work b');const original=s.recovery.prune.bind(s.recovery),calls=[];s.recovery.prune=async n=>{calls.push(n);return original(n);};await restore(s);assert.equal(calls.length,1);assert.ok(calls[0]>8192);assert.equal((await s.recoveryList()).filter(r=>r.outcome==='success').length,2);});
-test('批量总容量超限在剪枝前拒绝',async t=>{const {s}=await setup(t);const store=s.recovery;await store.init();let pruneCalled=false;store.prune=async()=>{pruneCalled=true;};const originalRead=fs.readFile;fs.readFile=async function(p,...args){if(p===path.join(store.repo,'a'))return Buffer.alloc(2*1024*1024,65);return originalRead.call(this,p,...args);};try{await assert.rejects(store.captureMany(Array(38).fill('a'),'whole'),/100MiB/);assert.equal(pruneCalled,false);}finally{fs.readFile=originalRead;}});
+test('批量总容量超限在剪枝前拒绝',async t=>{
+ const {s,write}=await setup(t);const store=s.recovery;await store.init();
+ // Use real bytes: snapshot reads resolve temp-directory aliases via realpath.
+ // Lexical readFile mocks miss Windows short paths and macOS directory links.
+ const data=Buffer.alloc(2*1024*1024,65);await write('a',data);
+ let pruneCalled=false,saveCalled=false;
+ store.prune=async()=>{pruneCalled=true;};store.save=async()=>{saveCalled=true;};
+ await assert.rejects(store.captureMany(Array(38).fill('a'),'whole'),new RegExp('100MiB'));
+ assert.equal(pruneCalled,false);assert.equal(saveCalled,false);
+ assert.deepEqual(await fs.readFile(path.join(store.repo,'a')),data);
+ assert.deepEqual(await fs.readdir(store.dir),[]);
+});
 
 test('恢复完成后备份状态写入失败如实返回警告，不改记恢复失败',async t=>{const {repo,s,write}=await setup(t);await write('a','work\n');const outcomes=[];s.recovery.finish=async(r,outcome)=>{outcomes.push(outcome);throw Error('模拟状态写入失败');};const result=await restore(s);assert.equal(result.restored,1);assert.equal(result.warnings.length,1);assert.deepEqual(outcomes,['success']);assert.equal(await fs.readFile(path.join(repo,'a'),'utf8'),'base\n');});
 
