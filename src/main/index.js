@@ -1,5 +1,6 @@
 const {app,BrowserWindow,ipcMain,dialog,shell,Menu}=require('electron');
 const {GitService}=require('./git-service');const fs=require('node:fs/promises');const path=require('node:path');
+const {GraphService}=require('./graph-service');
 const {ProjectService}=require('./project-service');
 const {ConfigService}=require('./config-service');
 const {TerminalService}=require('./terminal-service');
@@ -41,6 +42,7 @@ app.whenReady().then(async()=>{
  register('configList',scope=>new ConfigService(repo().repo).list(scope));
  register('configSet',input=>new ConfigService(repo().repo).set(input));
  register('configUnset',input=>new ConfigService(repo().repo).unset(input));
+ for(const method of ['graphLog','graphCommit'])register(method,arg=>{const current=repo();return new GraphService(current)[method](arg);});
  register('commitPreview',()=>repo().commitPreview());
  for(const method of ['recoveryList','recoveryClear','recoveryPreview','recoveryRestore'])register(method,arg=>repo()[method](arg));
  register('rollbackPreview',file=>repo().rollbackPreview(file));register('rollback',args=>repo().rollback(args));register('snapshot',()=>repo().snapshot());register('diff',args=>repo().diff(args));register('action',(action,args)=>repo().mutate(action,args));register('mergePreview',name=>repo().mergePreview(name));register('conflict',file=>repo().conflict(file));register('resolve',args=>repo().resolve(args));register('stashHash',ref=>repo().stashHash(ref));register('reveal',()=>shell.openPath(repo().repo));

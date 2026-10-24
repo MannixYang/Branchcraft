@@ -7,10 +7,10 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/terminal-clipboard.test.js test/restore-all.test.js test/git-service.test.js test/platform.test.js test/file-tree.test.js test/project-service.test.js test/terminal-service.test.js test/recovery-store.test.js test/repo-watcher.test.js test/config-service.test.js test/merge-preview.test.js",
+    "test": "node --test test/graph-layout.test.js test/graph-service.test.js test/terminal-clipboard.test.js test/restore-all.test.js test/git-service.test.js test/platform.test.js test/file-tree.test.js test/project-service.test.js test/terminal-service.test.js test/recovery-store.test.js test/repo-watcher.test.js test/config-service.test.js test/merge-preview.test.js",
     "pack": "node scripts/build.cjs --dir",
     "dist": "node scripts/build.cjs --publish never",
-    "test:desktop": "node test/startup-smoke.cjs && node test/desktop-smoke.cjs",
+    "test:desktop": "node test/startup-smoke.cjs && node test/desktop-smoke.cjs && node test/graph-smoke.cjs",
     "dist:win": "node scripts/build.cjs --win --x64 --publish never",
     "dist:linux": "node scripts/build.cjs --linux --x64 --publish never",
     "dist:mac": "node scripts/build.cjs --mac --publish never",
