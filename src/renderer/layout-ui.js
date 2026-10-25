@@ -36,3 +36,65 @@
  new MutationObserver(request).observe(document.body,{attributes:true,attributeFilter:['class']});
  window.addEventListener('resize',request);update();
 })();
+
+// Height preferences are independent from the established width splitters.
+(()=>{
+ const key='branchcraft.heights.v1';let saved={};
+ try{const value=JSON.parse(localStorage.getItem(key)||'{}');if(value&&typeof value==='object'&&!Array.isArray(value))saved=value;}catch{}
+ const entries=new Map();let scheduled=false;
+ const height=node=>node.getBoundingClientRect().height;
+ function request(){if(!scheduled){scheduled=true;requestAnimationFrame(()=>{scheduled=false;update();});}}
+ function attach(id,node,label,side,bounds,initial,floating=false){
+  if(!node)return;
+  const existing=entries.get(id);
+  if(existing?.node===node&&existing.handle.isConnected)return;
+  if(existing){existing.finish();existing.handle.remove();entries.delete(id);}
+  const handle=document.createElement('div');handle.className='height-splitter'+(floating?' height-floating height-'+side:'');handle.tabIndex=0;
+  handle.dataset.height=id;handle.setAttribute('role','separator');handle.setAttribute('aria-orientation','horizontal');handle.setAttribute('aria-label',label);
+  if(node.id)handle.setAttribute('aria-controls',node.id);
+  handle.title='上下拖动调整高度 · ↑/↓ 微调 · Shift 加速 · Home/End 最小/最大 · 双击重置';
+  if(floating){node.classList.add('height-resizable');node.append(handle);node.style.alignSelf=side==='top'?'flex-end':'flex-start';}
+  else if(side==='top')node.before(handle);else node.after(handle);
+  node.classList.add('height-managed');
+  let preferred=Number.isFinite(saved[id])?saved[id]:null,drag=null;
+  function apply(value,remember=false){
+   if(!node.getClientRects().length||getComputedStyle(node).display==='none'){handle.hidden=true;return;}
+   handle.hidden=false;const raw=bounds(),max=Math.max(0,Math.floor(raw[1])),min=Math.min(max,Math.ceil(raw[0]));
+   const next=Math.max(min,Math.min(max,Math.round(value)));const size=next+'px';
+   if(node.style.height!==size)node.style.height=size;
+   if(!floating&&node.style.flexBasis!==size)node.style.flex='0 0 '+size;
+   handle.setAttribute('aria-valuemin',String(min));handle.setAttribute('aria-valuemax',String(max));handle.setAttribute('aria-valuenow',String(next));
+   if(remember){preferred=next;saved[id]=next;try{localStorage.setItem(key,JSON.stringify(saved));}catch{}}
+  }
+  function finish(){drag=null;document.body.classList.remove('height-resizing');}
+  handle.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();handle.focus();drag={y:event.clientY,size:height(node)};handle.setPointerCapture(event.pointerId);document.body.classList.add('height-resizing');});
+  handle.addEventListener('pointermove',event=>{if(drag)apply(drag.size+(event.clientY-drag.y)*(side==='top'?-1:1),true);});
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(name,finish);
+  handle.addEventListener('keydown',event=>{const step=event.shiftKey?40:10;let value;
+   if(event.key==='ArrowUp'||event.key==='ArrowDown')value=height(node)+(event.key==='ArrowDown'?1:-1)*(side==='top'?-1:1)*step;
+   else if(event.key==='Home')value=bounds()[0];else if(event.key==='End')value=bounds()[1];else return;
+   event.preventDefault();apply(value,true);
+  });
+  handle.addEventListener('dblclick',()=>{preferred=null;delete saved[id];try{localStorage.setItem(key,JSON.stringify(saved));}catch{}apply(initial());});
+  entries.set(id,{node,handle,finish,apply:()=>apply(preferred??initial())});
+ }
+ function update(){
+  for(const [id,entry]of entries)if(!entry.node.isConnected){entry.finish();entry.handle.remove();entries.delete(id);}
+  const workspace=document.querySelector('.workspace');if(!workspace)return;
+  const stackMax=(node,reserve)=>()=>[40,Math.max(40,height(node.parentElement)-reserve)];
+  const recent=document.querySelector('#recent');attach('recent',recent,'最近仓库高度','bottom',()=>[30,Math.min(180,innerHeight*.24)],()=>70);
+  for(const [id,label]of [['branches','本地分支高度'],['remoteBranches','远程分支高度']]){
+   const node=document.getElementById(id);attach(id,node,label,'bottom',()=>[32,Math.min(300,innerHeight*.3)],()=>Math.min(130,innerHeight*.16));
+  }
+  const commit=document.querySelector('#commitBox');if(commit)attach('commit',commit,'提交区域高度','top',stackMax(commit,155),()=>158);
+  const inspector=document.querySelector('#graphInspector');if(inspector)attach('graphInspector',inspector,'提交详情高度','top',stackMax(inspector,155),()=>height(inspector.parentElement)*.46);
+  const info=document.querySelector('#graphInfo');if(info)attach('graphInfo',info,'提交说明高度','bottom',stackMax(info,90),()=>85);
+  const terminal=document.querySelector('#terminalPanel');attach('terminalHeight',terminal,'终端高度','top',()=>[120,height(workspace)-2],()=>height(workspace)-2,true);
+  const detail=document.querySelector('.detail-panel');attach('detailHeight',detail,'文件详情高度','bottom',()=>[120,height(workspace)-2],()=>height(workspace)-2,true);
+  for(const entry of entries.values())entry.apply();
+ }
+ const observer=new MutationObserver(request);observer.observe(document.querySelector('.workspace'),{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+ observer.observe(document.querySelector('.sidebar'),{childList:true,subtree:true});
+ const sizes=new ResizeObserver(request);sizes.observe(document.querySelector('.workspace'));sizes.observe(document.querySelector('.sidebar'));
+ window.addEventListener('resize',request);update();
+})();

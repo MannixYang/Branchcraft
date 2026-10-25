@@ -31,9 +31,9 @@ async function checkCompactLayout(expected,commitEditor=false){
     await capture(`before-row-click:${expected}:${zoom}:${narrow}`);
     await page.locator('#items .item').first().click();
     await page.waitForFunction(text=>document.querySelector('#detailBody').textContent.includes(text),expected);
-    const hit=await page.locator('#items .item').first().evaluate(node=>{const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});
+    const hit=await page.locator('#items .item').first().evaluate(node=>{const r=node.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {ok:node.contains(hit),connected:node.isConnected,rect:r.toJSON(),hit:hit?.outerHTML.slice(0,800)};});
     await capture(`after-row-rebuild:${expected}:${zoom}:${narrow}`);
-    if(!hit)throw Error(`文件行中心被遮挡：zoom=${zoom}, narrow=${narrow}`);
+    if(!hit.ok)throw Error(JSON.stringify(hit)+`文件行中心被遮挡：zoom=${zoom}, narrow=${narrow}`);
     if(commitEditor){
      // Both the wrapped actions and enlarged editor must remain reachable by pointer.
      await page.locator('#listActions button:enabled').first().click({trial:true});

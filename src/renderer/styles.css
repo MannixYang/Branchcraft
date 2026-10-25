@@ -80,3 +80,32 @@
 .graph-message{display:flex;align-items:center;gap:9px;flex:1;min-width:180px;white-space:nowrap}.graph-subject{overflow:hidden;text-overflow:ellipsis}.graph-badges{display:flex;gap:5px;flex-shrink:0}.graph-badges:empty{display:none}.graph-badge{border:1px solid #597a50;border-radius:4px;padding:2px 5px;font-size:10px;color:#c8e6ba;background:#253427}.graph-remote{border-color:#466b80;color:#b9dcee;background:#23313a}.graph-head{color:#222b20;background:#b7ed91}.graph-meta{flex:0 0 265px;font-size:11px;color:#99a99d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .graph-inspector{flex:0 1 46%;min-height:170px;display:flex;flex-direction:column;border-top:1px solid #53624e;overflow:hidden}.graph-info{padding:11px 18px;font-size:12px;overflow:auto;max-height:140px;flex-shrink:0}.graph-info strong{font-size:14px;color:#e4eddf}.graph-commit-meta{font:11px ui-monospace,monospace;margin-top:5px;overflow-wrap:anywhere;color:#aab7ac}.graph-comparison{margin-top:5px;color:#c5d9b5;font-size:11px}.graph-commit-body{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:12px;margin:5px 0 0}.graph-commit-body:empty{display:none}.graph-inspector-body{display:flex;min-height:0;flex:1;border-top:1px solid #303a34}.graph-files{flex:0 0 220px;overflow:auto;border-right:1px solid #303a34;padding:6px}.graph-file{display:block;text-align:left;width:100%;padding:8px;border:0;background:transparent;border-radius:4px;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere;color:#afc0b0}.graph-file.selected{background:#304032;color:#d9efc8}.graph-diff{flex:1;min-width:0;overflow:auto}.graph-diff .diff{margin:0;min-height:100%}
 @media(max-width:1000px){.graph-toolbar{gap:6px;padding:8px}.graph-files{flex-basis:165px}.graph-info{padding:8px 12px}.graph-meta{flex-basis:210px}}
+
+/* Vertical splitters: subdued rails, independent scrolling, reachable short-window controls. */
+.sidebar{min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.sidebar>.brand,.sidebar>#openRepo,.sidebar>.section-label,.sidebar>nav,.sidebar>.sidebar-bottom{flex-shrink:0}
+.sidebar .recent,.sidebar .branch-list{min-height:0;max-height:none;overflow:auto}
+.sidebar-bottom{flex-shrink:0}
+.height-splitter{height:8px;min-height:8px;flex:0 0 8px;position:relative;z-index:9;cursor:row-resize;touch-action:none;background:transparent}
+.height-splitter:after{content:'';position:absolute;left:15%;right:15%;top:3px;height:2px;border-radius:2px;background:#40534c}
+.height-splitter:hover,.height-splitter:focus-visible{background:#57b7a433;outline:1px solid #57b7a4;outline-offset:-1px}
+.height-splitter[hidden]{display:none}
+.height-resizable{position:relative;max-height:100%;min-height:0}
+.height-floating{position:absolute;left:0;right:0;margin:0}
+.height-top{top:0}.height-bottom{bottom:0}
+body.height-resizing,body.height-resizing *{cursor:row-resize!important;user-select:none!important}
+.workspace .list-panel{overflow-x:hidden;overflow-y:auto}
+.workspace .items{min-height:96px;flex:1 0 96px;overflow:auto}
+.workspace .panel-top,.workspace .search-wrap,.workspace .list-actions{flex-shrink:0}
+.commit-box.height-managed{min-height:0;max-height:none;overflow:auto;padding:12px}
+.commit-box textarea{min-height:48px;resize:vertical;max-height:55vh}
+.graph-panel{min-height:0}
+.graph-rows{min-height:40px;flex:1 1 0}
+.graph-inspector.height-managed{min-height:0;max-height:none}
+.graph-info.height-managed{max-height:none;min-height:0;overflow:auto}
+.graph-inspector-body{min-height:40px;overflow:hidden}
+.detail-panel.height-managed{padding-bottom:8px}
+.terminal-panel.height-managed{padding-top:8px}
+.detail-body,.graph-files,.graph-diff{overscroll-behavior:contain}
+dialog{max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+@media(max-height:720px){.sidebar{padding-top:12px}.sidebar .section-label{margin-top:12px}.sidebar-bottom{padding-top:8px}.page-heading{padding-top:14px;padding-bottom:14px}.workspace{margin-bottom:10px}}

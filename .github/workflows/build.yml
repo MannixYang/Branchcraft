@@ -1,4 +1,4 @@
-name: 三平台测试、打包与预发布
+name: 三平台测试、打包与正式发布
 on:
   push:
     branches: [main, master, feature/cross-platform]
@@ -88,7 +88,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    name: 发布 GitHub 预发布版本
+    name: 发布 GitHub 正式版本
     needs: desktop
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
@@ -118,7 +118,7 @@ jobs:
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-arm64.dmg"
           test -f "Branchcraft-${GITHUB_REF_NAME#v}-mac-arm64.zip"
           sha256sum -- *.exe *.AppImage *.deb *.dmg *.zip > SHA256SUMS.txt
-      - name: 创建草稿、上传全部附件后公开为预发布
+      - name: 更新或创建草稿、校验全部附件后公开为正式版
         uses: actions/github-script@v7
         with:
           script: |
@@ -126,22 +126,84 @@ jobs:
             const path = require('path');
             const { owner, repo } = context.repo;
             const tag = process.env.GITHUB_REF_NAME;
+            async function verifyRemoteTag() {
+              const { data: ref } = await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              let object = ref.object;
+              const seen = new Set();
+              while (object.type === 'tag') {
+                if (seen.has(object.sha)) throw new Error('远端标签引用存在循环');
+                seen.add(object.sha);
+                const { data: annotated } = await github.rest.git.getTag({ owner, repo, tag_sha: object.sha });
+                object = annotated.object;
+              }
+              if (object.type !== 'commit' || object.sha !== context.sha) {
+                throw new Error(`远端标签 ${tag} 的实际 commit ${object.sha} 与本次构建 ${context.sha} 不一致，拒绝发布`);
+              }
+            }
+            await verifyRemoteTag();
             const dir = 'release-assets';
             const files = fs.readdirSync(dir).sort();
             if (files.length !== 9) throw new Error('预期 8 个安装包和 1 个校验和文件，实际为 ' + files.length);
-            // 不覆盖已有版本；附件未全部上传时保留草稿，避免公开不完整版本。
-            const { data: release } = await github.rest.repos.createRelease({
-              owner, repo, tag_name: tag, target_commitish: context.sha,
-              name: `Branchcraft ${tag}（预发布）`, draft: true, prerelease: true,
-              generate_release_notes: true,
-              body: '跨平台预发布版本：Windows x64、Linux x64、macOS Intel x64 与 Apple Silicon arm64。\n\n四平台单元测试、源码桌面测试及打包版桌面测试通过后发布。附件包含 SHA256SUMS.txt，请按需校验。\n\n注意：当前安装包未进行代码签名，macOS 未进行 Apple 公证，系统可能显示安全提示。本版本为预发布，建议先在测试仓库中体验。'
-            });
-            for (const file of files) {
-              const data = fs.readFileSync(path.join(dir, file));
-              await github.rest.repos.uploadReleaseAsset({ owner, repo, release_id: release.id, name: file, data });
-              core.info(`已上传：${file}`);
+            const sizes = new Map(files.map(file => {
+              const stat = fs.statSync(path.join(dir, file));
+              if (!stat.isFile() || stat.size === 0) throw new Error(`附件不是非空文件：${file}`);
+              return [file, stat.size];
+            }));
+            const metadata = {
+              owner, repo, name: `Branchcraft ${tag}（正式版）`, draft: true, prerelease: false,
+              body: '跨平台正式版本：Windows x64、Linux x64、macOS Intel x64 与 Apple Silicon arm64。\n\n四平台单元测试、源码桌面测试及打包版桌面测试通过后发布。附件包含 SHA256SUMS.txt，请按需校验。\n\n注意：当前安装包未进行代码签名，macOS 未进行 Apple 公证，系统可能显示安全提示。'
+            };
+            let release;
+            try {
+              const response = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              release = response.data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
             }
-            const { data: published } = await github.rest.repos.updateRelease({
-              owner, repo, release_id: release.id, draft: false, prerelease: true, make_latest: 'false'
-            });
-            await core.summary.addHeading('预发布完成').addLink(tag, published.html_url).write();
+            try {
+              if (release) {
+                const response = await github.rest.repos.updateRelease({ ...metadata, release_id: release.id });
+                release = response.data;
+                const oldAssets = await github.paginate(github.rest.repos.listReleaseAssets, {
+                  owner, repo, release_id: release.id, per_page: 100
+                });
+                for (const asset of oldAssets) {
+                  await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id });
+                }
+              } else {
+                const response = await github.rest.repos.createRelease({
+                  ...metadata, tag_name: tag, target_commitish: context.sha, generate_release_notes: true
+                });
+                release = response.data;
+              }
+              for (const file of files) {
+                const data = fs.readFileSync(path.join(dir, file));
+                await github.rest.repos.uploadReleaseAsset({ owner, repo, release_id: release.id, name: file, data });
+                core.info(`已上传：${file}`);
+              }
+              const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+                owner, repo, release_id: release.id, per_page: 100
+              });
+              if (assets.length !== 9 || new Set(assets.map(asset => asset.name)).size !== 9) {
+                throw new Error(`远端附件数量或名称不符合预期：${assets.length}`);
+              }
+              for (const asset of assets) {
+                if (!sizes.has(asset.name) || asset.size !== sizes.get(asset.name) || asset.state !== 'uploaded') {
+                  throw new Error(`远端附件名称、大小或上传状态校验失败：${asset.name}`);
+                }
+              }
+              await verifyRemoteTag();
+              const { data: published } = await github.rest.repos.updateRelease({
+                owner, repo, release_id: release.id, draft: false, prerelease: false, make_latest: 'true'
+              });
+              core.info(`正式发布完成：${published.html_url}`);
+            } catch (error) {
+              if (release) {
+                try {
+                  await github.rest.repos.updateRelease({ owner, repo, release_id: release.id, draft: true, prerelease: false });
+                } catch (draftError) {
+                  core.error(`恢复草稿失败，请人工检查 release ${release.id}：${draftError.message}`);
+                }
+              }
+              throw error;
+            }
