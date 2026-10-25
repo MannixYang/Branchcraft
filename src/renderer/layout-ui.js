@@ -15,9 +15,9 @@
   handle.title='拖拽调整 · 方向键微调 · Home/End 最小/最大 · 双击重置';node.classList.add('resizable-panel');node.append(handle);
   let preferred=Number.isFinite(saved[key])?saved[key]:initial(),drag=null;
   function apply(value,remember=false){const [min,max]=bounds();if(max<=0)return;const next=Math.max(Math.ceil(Math.min(min,max)),Math.min(Math.floor(max),Math.round(value)));const basis=next+'px';if(node.style.width!==basis)node.style.width=basis;if(node.style.flexBasis!==basis)node.style.flex='0 0 '+basis;handle.setAttribute('aria-valuemin',String(Math.min(min,max)));handle.setAttribute('aria-valuemax',String(Math.floor(max)));handle.setAttribute('aria-valuenow',String(next));if(remember){preferred=next;persist(key,next);}}
-  handle.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();drag={x:e.clientX,start:width(node),id:e.pointerId};handle.setPointerCapture(e.pointerId);document.body.classList.add('panel-resizing');};
-  handle.onpointermove=e=>{if(drag)apply(drag.start+(e.clientX-drag.x)*(side==='left'?-1:1),true);};
-  function finish(){drag=null;document.body.classList.remove('panel-resizing');}
+  handle.onpointerdown=e=>{if(e.button!==0||drag)return;e.preventDefault();drag={x:e.clientX,start:width(node),id:e.pointerId};handle.setPointerCapture(e.pointerId);document.body.classList.add('panel-resizing');};
+  handle.onpointermove=e=>{if(drag&&e.pointerId===drag.id&&(e.buttons&1))apply(drag.start+(e.clientX-drag.x)*(side==='left'?-1:1),true);};
+  function finish(event){if(event&&drag&&event.pointerId!==drag.id)return;drag=null;document.body.classList.remove('panel-resizing');}
   handle.onpointerup=finish;handle.onpointercancel=finish;handle.onlostpointercapture=finish;
   handle.onkeydown=e=>{const [min,max]=bounds();let next=width(node);const delta=(e.shiftKey?40:10)*(side==='left'?-1:1);if(e.key==='ArrowLeft')next-=delta;else if(e.key==='ArrowRight')next+=delta;else if(e.key==='Home')next=min;else if(e.key==='End')next=max;else return;e.preventDefault();apply(next,true);};
   handle.ondblclick=()=>apply(initial(),true);
@@ -66,9 +66,9 @@
    handle.setAttribute('aria-valuemin',String(min));handle.setAttribute('aria-valuemax',String(max));handle.setAttribute('aria-valuenow',String(next));
    if(remember){preferred=next;saved[id]=next;try{localStorage.setItem(key,JSON.stringify(saved));}catch{}}
   }
-  function finish(){drag=null;document.body.classList.remove('height-resizing');}
-  handle.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();handle.focus();drag={y:event.clientY,size:height(node)};handle.setPointerCapture(event.pointerId);document.body.classList.add('height-resizing');});
-  handle.addEventListener('pointermove',event=>{if(drag)apply(drag.size+(event.clientY-drag.y)*(side==='top'?-1:1),true);});
+  function finish(event){if(event&&drag&&event.pointerId!==drag.id)return;drag=null;document.body.classList.remove('height-resizing');}
+  handle.addEventListener('pointerdown',event=>{if(event.button!==0||drag)return;event.preventDefault();handle.focus({preventScroll:true});drag={id:event.pointerId,y:event.clientY,size:height(node)};handle.setPointerCapture(event.pointerId);document.body.classList.add('height-resizing');});
+  handle.addEventListener('pointermove',event=>{if(drag&&event.pointerId===drag.id&&(event.buttons&1))apply(drag.size+(event.clientY-drag.y)*(side==='top'?-1:1),true);});
   for(const name of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(name,finish);
   handle.addEventListener('keydown',event=>{const step=event.shiftKey?40:10;let value;
    if(event.key==='ArrowUp'||event.key==='ArrowDown')value=height(node)+(event.key==='ArrowDown'?1:-1)*(side==='top'?-1:1)*step;

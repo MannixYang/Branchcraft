@@ -36,7 +36,10 @@ const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',windowsHi
  await grip('graphInfo').press('Home');await tick();assert((await size('#graphInfo'))<=41);
  await page.locator('#toggleTerminal').click();await page.waitForFunction(()=>document.querySelector('#terminalHost .xterm'));
  await grip('terminalHeight').press('Home');await tick();assert((await size('#terminalPanel'))<=121);await grip('terminalHeight').press('End');await tick();assert((await size('#terminalPanel'))>200);await page.locator('#hideTerminal').click();
- await page.locator('[data-view="changes"]').click();await grip('detailHeight').press('Home');await tick();assert((await size('.detail-panel'))<=121);await grip('detailHeight').press('End');
+ await page.locator('[data-view="changes"]').click();
+ // setView awaits navigation guards then resetDetail replaces the floating grip.
+ await page.waitForFunction(()=>document.querySelector('[data-view="changes"]').classList.contains('active')&&!document.body.classList.contains('graph-view'));await tick();
+ await grip('detailHeight').waitFor({state:'visible'});await grip('detailHeight').press('Home');await tick();assert((await size('.detail-panel'))<=121);await grip('detailHeight').press('End');
  await page.locator('[data-height="detailHeight"]').evaluate(n=>n.remove());await tick();assert.equal(await grip('detailHeight').count(),1,'removed floating grip must recover');
  await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.setMinimumSize(800,480);win.setSize(1050,540);});await tick();
  await scrollable('#items');await page.locator('.sidebar-bottom a').scrollIntoViewIfNeeded();assert(await page.locator('.sidebar-bottom a').isVisible());
