@@ -31,7 +31,9 @@ async function checkCompactLayout(expected,commitEditor=false){
     await capture(`before-row-click:${expected}:${zoom}:${narrow}`);
     await page.locator('#items .item').first().click();
     await page.waitForFunction(text=>document.querySelector('#detailBody').textContent.includes(text),expected);
-    const hit=await page.locator('#items .item').first().evaluate(node=>{const r=node.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {ok:node.contains(hit),connected:node.isConnected,rect:r.toJSON(),hit:hit?.outerHTML.slice(0,800)};});
+    // Query and inspect the current row in one renderer task. A locator-resolved
+    // ElementHandle can be detached by an intervening asynchronous list refresh.
+    const hit=await page.evaluate(()=>{const node=document.querySelector('#items .item');if(!node)return {ok:false,connected:false,reason:'current file row missing'};const r=node.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {ok:node.contains(hit),connected:node.isConnected,rect:r.toJSON(),hit:hit?.outerHTML.slice(0,800)};});
     await capture(`after-row-rebuild:${expected}:${zoom}:${narrow}`);
     if(!hit.ok)throw Error(JSON.stringify(hit)+`文件行中心被遮挡：zoom=${zoom}, narrow=${narrow}`);
     if(commitEditor){
