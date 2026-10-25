@@ -20,7 +20,7 @@ const {execFileSync:run}=require('child_process');
   fs.writeFileSync(path.join(repo,'src/nested/a.txt'),'INDEX line\n');git(repo,'add','.');
   fs.writeFileSync(path.join(repo,'src/nested/a.txt'),payload+'\n');
   delete process.env.ELECTRON_RUN_AS_NODE;
-  app=await electron.launch({executablePath:require('electron'),args:[path.resolve(__dirname,'..'),'--user-data-dir='+profile]});
+  app=await electron.launch(require('./electron-options.cjs').electronOptions(profile));
   await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},repo);
   const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.waitForFunction(()=>typeof choose==='function');await page.evaluate(()=>choose());

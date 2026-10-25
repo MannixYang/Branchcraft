@@ -1,22 +1,32 @@
 const {_electron:electron}=require('playwright-core');
+const {settleLayout,expectSize,requireRoom}=require('./layout-helpers.cjs');
 const fs=require('fs'),os=require('os'),path=require('path'),assert=require('assert'),{execFileSync}=require('child_process');
 (async()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'bc-layout-'));let app;try{
 const repo=path.join(root,'repo');fs.mkdirSync(repo);const git=(...args)=>execFileSync('git',args,{cwd:repo});git('init');git('config','user.name','Test');git('config','user.email','test@example.test');fs.writeFileSync(path.join(repo,'a.txt'),'one\n');git('add','.');git('commit','-m','initial');
 const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
 app=await electron.launch({env,executablePath:process.env.BRANCHCRAFT_EXE||require('electron'),args:[...(process.env.BRANCHCRAFT_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[]),...(process.env.BRANCHCRAFT_EXE?[]:[path.resolve(__dirname,'..')]),'--user-data-dir='+path.join(root,'profile')]});const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},repo);await page.waitForFunction(()=>typeof choose==='function');await page.evaluate(()=>choose());await page.locator('.sidebar .panel-splitter').waitFor();
 // Visibility alone does not wait for the requestAnimationFrame layout observers.
-const settle=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+const settle=()=>settleLayout(page);
 await settle();
 const size=selector=>page.locator(selector).evaluate(n=>n.getBoundingClientRect().width);
-async function drag(selector,dx){await settle();await page.evaluate(()=>{window.dragTrace=[];for(const type of ['pointerdown','pointermove','pointerup','gotpointercapture','lostpointercapture'])document.addEventListener(type,e=>window.dragTrace.push({type,id:e.pointerId,buttons:e.buttons,x:e.clientX,y:e.clientY,target:e.target.className}),{capture:true,signal:(window.dragAbort??=new AbortController()).signal});});const b=await page.locator(selector+' .panel-splitter').boundingBox();assert(b);await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width/2+dx,b.y+b.height/2,{steps:8});await page.mouse.up();await page.waitForTimeout(100);}
+async function drag(selector,dx,delta=dx){
+ await settle();const handle=page.locator(selector+' .panel-splitter');await requireRoom(handle,delta);
+ const before=await size(selector),b=await handle.boundingBox();assert(b);
+ await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();
+ try{await page.mouse.move(b.x+b.width/2+dx,b.y+b.height/2,{steps:8});}finally{await page.mouse.up();}
+ await expectSize(page,selector,'width',before+delta);
+}
+// Normalize width preferences before testing an unconstrained drag on small displays.
+await page.locator('.sidebar .panel-splitter').press('Home');await settle();
+
 let before=await size('.sidebar');await drag('.sidebar',35);assert(Math.abs(await size('.sidebar')-before-35)<3,JSON.stringify({before,after:await size('.sidebar'),viewport:await page.evaluate(()=>({width:innerWidth,height:innerHeight,zoom:devicePixelRatio})),handle:await page.locator('.sidebar .panel-splitter').boundingBox()}));
 before=await size('.list-panel');await drag('.list-panel',25);assert(Math.abs(await size('.list-panel')-before-25)<3);
-await page.locator('.list-panel .panel-splitter').focus();await page.keyboard.press('ArrowLeft');assert(Math.abs(await size('.list-panel')-before-15)<3);
+await page.locator('.list-panel .panel-splitter').focus();await page.keyboard.press('ArrowLeft');await expectSize(page,'.list-panel','width',before+15);assert(Math.abs(await size('.list-panel')-before-15)<3);
 await page.click('[data-view="project"]');await page.locator('.file-row[title="a.txt"]').click();await page.locator('#projectText').waitFor();await page.getByRole('button',{name:'显示 Diff',exact:true}).click();await page.locator('.editor-left .panel-splitter').waitFor();before=await size('.editor-left');await drag('.editor-left',-30);assert(Math.abs(await size('.editor-left')-before+30)<3);
 await page.getByRole('button',{name:'隐藏 Diff',exact:true}).click();await page.locator('.editor-left .panel-splitter').waitFor({state:'hidden'});assert(!await page.locator('.editor-left .panel-splitter').isVisible());
 // Small macOS runner displays can clamp the window: leave genuine terminal expansion room.
 await page.locator('.sidebar .panel-splitter').focus();await page.keyboard.press('Home');await page.locator('.list-panel .panel-splitter').focus();await page.keyboard.press('Home');await settle();
-const terminalButton=page.locator('#toggleTerminal');await terminalButton.click();await page.locator('#terminalPanel').waitFor({state:'visible'});await settle();before=await size('#terminalPanel');await drag('#terminalPanel',-30);assert(Math.abs(await size('#terminalPanel')-before-30)<3,JSON.stringify({before,after:await size('#terminalPanel'),handle:await page.locator('#terminalPanel .panel-splitter').boundingBox(),aria:await page.locator('#terminalPanel .panel-splitter').getAttribute('aria-valuenow'),viewport:await page.evaluate(()=>({width:innerWidth,height:innerHeight,trace:window.dragTrace}))}));await terminalButton.click();
-const saved=await size('.sidebar');await page.reload();await page.locator('.sidebar .panel-splitter').waitFor();assert(Math.abs(await size('.sidebar')-saved)<3);
-await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1080,700));await page.waitForTimeout(200);assert(await size('.sidebar')>=180);assert.equal(errors.length,0,errors.join('\n'));console.log('PASS: sidebar/list/editor/terminal pointer resize, keyboard, hidden diff, persistence and minimum window');
+const terminalButton=page.locator('#toggleTerminal');await terminalButton.click();await page.locator('#terminalPanel').waitFor({state:'visible'});await settle();before=await size('#terminalPanel');await drag('#terminalPanel',-30,30);assert(Math.abs(await size('#terminalPanel')-before-30)<3,JSON.stringify({before,after:await size('#terminalPanel'),handle:await page.locator('#terminalPanel .panel-splitter').boundingBox(),aria:await page.locator('#terminalPanel .panel-splitter').getAttribute('aria-valuenow'),viewport:await page.evaluate(()=>({width:innerWidth,height:innerHeight,zoom:devicePixelRatio}))}));await terminalButton.click();
+const saved=await size('.sidebar');await page.reload();await page.locator('.sidebar .panel-splitter').waitFor();await expectSize(page,'.sidebar','width',saved);assert(Math.abs(await size('.sidebar')-saved)<3);
+const viewport=await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.setSize(1080,700);return win.getContentSize();});await page.waitForFunction(([w,h])=>innerWidth===w&&innerHeight===h,viewport);await settle();assert(await size('.sidebar')>=180);assert.equal(errors.length,0,errors.join('\n'));console.log('PASS: sidebar/list/editor/terminal pointer resize, keyboard, hidden diff, persistence and minimum window');
 }finally{if(app)await app.close();fs.rmSync(root,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

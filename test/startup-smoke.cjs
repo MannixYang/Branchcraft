@@ -2,7 +2,7 @@ const {_electron:electron}=require('playwright-core');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 (async()=>{let app;const errors=[];const profile=fs.mkdtempSync(path.join(os.tmpdir(),'branchcraft-startup-'));try{
- app=await electron.launch({executablePath:process.env.BRANCHCRAFT_EXE||require('electron'),args:[...(process.env.BRANCHCRAFT_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[]),...(process.env.BRANCHCRAFT_EXE?[]:[path.resolve(__dirname,'..')]),'--user-data-dir='+profile],timeout:30000});
+ app=await electron.launch(require('./electron-options.cjs').electronOptions(profile));
  const page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));await page.waitForLoadState('load');
  // Hold the editor script, not a clock: a genuine click must survive slow module loading.
  await app.evaluate(({session,dialog})=>{

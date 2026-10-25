@@ -7,7 +7,11 @@ if(!fs.existsSync(exe))throw Error('打包程序不存在：'+exe);
 process.env.BRANCHCRAFT_EXE=exe;
 process.env.BRANCHCRAFT_OUTPUT ||= path.resolve(__dirname,'../screenshots/packaged');
 const {spawnSync}=require('node:child_process');
-for(const test of ['desktop-smoke.cjs','graph-smoke.cjs','layout-smoke.cjs','heights-smoke.cjs']){
+const tests=process.env.BRANCHCRAFT_PACKAGED_FULL==='0'
+ ? ['desktop-smoke.cjs','graph-smoke.cjs']
+ : ['startup-smoke.cjs','desktop-smoke.cjs','graph-smoke.cjs','layout-smoke.cjs','heights-smoke.cjs','editor-smoke.cjs','project-tree-smoke.cjs'];
+for(const test of tests){
+ console.log('打包验证: '+test);
  const result=spawnSync(process.execPath,[path.join(__dirname,test)],{stdio:'inherit',env:process.env});
  if(result.error)throw result.error;if(result.status!==0)process.exit(result.status||1);
 }

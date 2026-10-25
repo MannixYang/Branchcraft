@@ -1,4 +1,5 @@
 const {_electron:electron}=require('playwright-core');
+const {settleLayout,expectSize,requireRoom}=require('./layout-helpers.cjs');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{execFileSync}=require('node:child_process');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'branchcraft-layout-')),repo=path.join(root,'repo'),profile=path.join(root,'profile');fs.mkdirSync(repo);
@@ -12,13 +13,14 @@ const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',windowsHi
  const page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));await page.waitForLoadState('load');
  await app.evaluate(({dialog},repo)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[repo]});},repo);
  await page.locator('#openRepo').click();await page.waitForFunction(()=>document.querySelector('#items .item'));
- const tick=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ const tick=()=>settleLayout(page);
  const grip=id=>page.locator('[data-height="'+id+'"]');
  async function size(selector){return page.locator(selector).evaluate(n=>n.getBoundingClientRect().height);}
  async function scrollable(selector){assert(await page.locator(selector).evaluate(n=>{n.scrollTop=n.scrollHeight;return n.scrollHeight>n.clientHeight&&n.scrollTop>0;}),selector+' must scroll');}
  await page.locator('.sidebar').evaluate(n=>n.scrollTop=0);
+ await grip('branches').press('Home');await tick();await requireRoom(grip('branches'),35);
  await grip('branches').scrollIntoViewIfNeeded();const box=await grip('branches').boundingBox();const before=await size('#branches');
- await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+box.height/2+35,{steps:5});await page.mouse.up();await tick();
+ await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+box.height/2+35,{steps:5});await page.mouse.up();await expectSize(page,'#branches','height',before+35);
  assert((await size('#branches'))>before+20,'mouse drag must expand branch list');
  await grip('branches').press('Home');await tick();assert((await size('#branches'))<=33);await scrollable('#branches');
  await grip('remoteBranches').scrollIntoViewIfNeeded();await grip('remoteBranches').press('Home');await tick();await scrollable('#remoteBranches');
@@ -27,7 +29,7 @@ const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',windowsHi
  await grip('commit').press('Home');await tick();await scrollable('#commitBox');
  await grip('commit').dblclick();await tick();assert(Math.abs((await size('#commitBox'))-158)<2,'double click reset');
  await grip('branches').scrollIntoViewIfNeeded();await grip('branches').press('End');await grip('branches').press('ArrowUp');await tick();const remembered=await size('#branches');
- await page.reload();await page.waitForFunction(()=>document.querySelector('[data-height="branches"]'));await tick();assert(Math.abs((await size('#branches'))-remembered)<2,'height must survive reload');
+ await page.reload();await page.waitForFunction(()=>document.querySelector('[data-height="branches"]'));await expectSize(page,'#branches','height',remembered,1.99);assert(Math.abs((await size('#branches'))-remembered)<2,'height must survive reload');
  // Width controls must remain independent from height preferences.
  const horizontal=page.locator('.sidebar > .panel-splitter');const width=await page.locator('.sidebar').evaluate(n=>n.getBoundingClientRect().width);await horizontal.press('ArrowRight');await tick();assert((await page.locator('.sidebar').evaluate(n=>n.getBoundingClientRect().width))>width);
  await page.locator('#recent button').first().click();await page.waitForFunction(()=>document.querySelector('#repoName').textContent==='repo');
@@ -40,8 +42,8 @@ const git=(...args)=>execFileSync('git',args,{cwd:repo,encoding:'utf8',windowsHi
  // setView awaits navigation guards then resetDetail replaces the floating grip.
  await page.waitForFunction(()=>document.querySelector('[data-view="changes"]').classList.contains('active')&&!document.body.classList.contains('graph-view'));await tick();
  await grip('detailHeight').waitFor({state:'visible'});await grip('detailHeight').press('Home');await tick();assert((await size('.detail-panel'))<=121);await grip('detailHeight').press('End');
- await page.locator('[data-height="detailHeight"]').evaluate(n=>n.remove());await tick();assert.equal(await grip('detailHeight').count(),1,'removed floating grip must recover');
- await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.setMinimumSize(800,480);win.setSize(1050,540);});await tick();
+ await page.locator('[data-height="detailHeight"]').evaluate(n=>n.remove());await page.waitForFunction(()=>document.querySelector('[data-height="detailHeight"]'));await tick();assert.equal(await grip('detailHeight').count(),1,'removed floating grip must recover');
+ const viewport=await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows()[0];win.setMinimumSize(800,480);win.setSize(1050,540);return win.getContentSize();});await page.waitForFunction(([w,h])=>innerWidth===w&&innerHeight===h,viewport);await tick();
  await scrollable('#items');await page.locator('.sidebar-bottom a').scrollIntoViewIfNeeded();assert(await page.locator('.sidebar-bottom a').isVisible());
  // The real generic dialog remains usable with unusually long content.
  await page.evaluate(()=>{const d=document.querySelector('#modal');d.querySelector('form').prepend(Object.assign(document.createElement('div'),{textContent:'Long dialog '.repeat(1000)}));d.showModal();});await tick();

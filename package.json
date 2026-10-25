@@ -10,13 +10,16 @@
     "test": "node --test test/graph-layout.test.js test/graph-service.test.js test/terminal-clipboard.test.js test/restore-all.test.js test/git-service.test.js test/platform.test.js test/file-tree.test.js test/project-service.test.js test/terminal-service.test.js test/recovery-store.test.js test/repo-watcher.test.js test/config-service.test.js test/merge-preview.test.js",
     "pack": "node scripts/build.cjs --dir",
     "dist": "node scripts/build.cjs --publish never",
-    "test:desktop": "node test/startup-smoke.cjs && node test/desktop-smoke.cjs && node test/graph-smoke.cjs && node test/layout-smoke.cjs && node test/heights-smoke.cjs",
+    "test:desktop": "npm run test:ui && npm run test:layout",
     "dist:win": "node scripts/build.cjs --win --x64 --publish never",
     "dist:linux": "node scripts/build.cjs --linux --x64 --publish never",
     "dist:mac": "node scripts/build.cjs --mac --publish never",
     "postinstall": "node scripts/install-native.cjs",
     "test:terminal": "node test/terminal-smoke.cjs",
-    "test:terminal-restore": "node test/terminal-restore-smoke.cjs"
+    "test:terminal-restore": "node test/terminal-restore-smoke.cjs",
+    "test:layout": "node test/layout-smoke.cjs && node test/heights-smoke.cjs",
+    "test:ui": "node test/startup-smoke.cjs && node test/desktop-smoke.cjs && node test/graph-smoke.cjs",
+    "test:editor": "node test/editor-smoke.cjs && node test/project-tree-smoke.cjs"
   },
   "devDependencies": {
     "electron": "^42.0.0",

@@ -1,4 +1,4 @@
-name: 三平台测试、打包与正式发布
+name: 四平台测试、打包与正式发布
 on:
   push:
     branches: [main, master, feature/cross-platform]
@@ -29,6 +29,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      BRANCHCRAFT_PACKAGED_FULL: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,7 +59,11 @@ jobs:
       - name: Windows 与 macOS 项目编辑器与文件树回归
         if: runner.os != 'Linux'
         run: node test/editor-smoke.cjs && node test/project-tree-smoke.cjs
-      - name: 原生平台打包
+      - name: 日常提交构建实际应用目录
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: node scripts/build.cjs --${{ matrix.target }} --${{ matrix.arch }} --dir --publish never
+      - name: 发布标签构建全部安装包
+        if: startsWith(github.ref, 'refs/tags/')
         run: node scripts/build.cjs --${{ matrix.target }} --${{ matrix.arch }} --publish never
       - name: Linux 打包版本桌面测试
         if: runner.os == 'Linux'
@@ -67,6 +72,7 @@ jobs:
         if: runner.os != 'Linux'
         run: node test/packaged-smoke.cjs
       - name: 上传安装包
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: Branchcraft-${{ matrix.target }}-${{ matrix.arch }}
